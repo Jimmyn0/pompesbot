@@ -1,0 +1,5 @@
+# PompesBot v2.0 — Dépendances
+discord.py>=2.3.2
+riotwatcher>=3.2.5
+python-dotenv>=1.0.0
+requests>=2.31.0
