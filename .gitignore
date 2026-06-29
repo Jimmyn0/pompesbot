@@ -1,0 +1,6 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+stats_cache.json
+session_totals.json
