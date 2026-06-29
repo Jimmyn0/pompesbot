@@ -1,0 +1,30 @@
+{
+  "PLAYERS_TO_TRACK": [
+    {"name": "Player One",   "tag": "EUW"},
+    {"name": "Player Two",   "tag": "EUW"},
+    {"name": "Player Three", "tag": "1234"}
+  ],
+  "PLAYER_CATEGORIES": {
+    "ELT": {
+      "players":    ["Player One"],
+      "base":       30,
+      "min_pompes": 15,
+      "mult_mort":  18,
+      "mult_kill":  18
+    },
+    "CNF": {
+      "players":    ["Player Two"],
+      "base":       23,
+      "min_pompes": 10,
+      "mult_mort":  16,
+      "mult_kill":  15
+    },
+    "STD": {
+      "players":    [],
+      "base":       15,
+      "min_pompes": 5,
+      "mult_mort":  12,
+      "mult_kill":  10
+    }
+  }
+}
