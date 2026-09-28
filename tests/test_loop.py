@@ -48,7 +48,8 @@ async def test_only_owner_and_friends_get_pushups(seeded, now):
     assert len(channel.sent) == 1
     embed, view = channel.sent[0]
     assert "ARAM" in embed.title
-    assert view.children[0].custom_id == "pompes:done:EUW1_12"
+    ids = [c.custom_id for c in view.children]
+    assert ids == ["pompes:detail:EUW1_12:1", "pompes:detail:EUW1_12:2", "pompes:done:EUW1_12"]   # ordre de l'embed
     assert {r["name"]: r["total"] for r in db.session_leaderboard()} == {"A": 15, "B": 45}
 
     await _scan(channel)

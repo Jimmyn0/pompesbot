@@ -50,6 +50,13 @@ CACHE_FILE    = os.path.join(DATA_DIR, "stats_cache.json")
 SESSION_FILE  = os.path.join(DATA_DIR, "session_totals.json")
 STATE_FILE    = os.path.join(DATA_DIR, "match_state.json")
 
+# Défis
+LOSS_STREAK_THRESHOLD  = 3     # à partir de la 3e défaite d'affilée dans la session…
+LOSS_STREAK_MULTIPLIER = 1.2   # …les pompes de la partie sont multipliées par 1,2
+DEATHLESS_BONUS        = 5     # partie sans mourir : -5 pompes (peut passer sous le minimum, pas sous 0)
+WIN_STREAK_ACHIEVEMENT = 5     # succès « Inarrêtable » : 5 victoires d'affilée dans la session
+RECORD_MIN_GAMES       = 5     # records de la saison annoncés après 5 parties dans l'année
+
 SESSION_IDLE_HOURS = 6    # sans partie pendant ce délai, la session est clôturée et son bilan posté
 
 TIMEZONE     = "Europe/Paris"

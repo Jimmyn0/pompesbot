@@ -54,10 +54,11 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 | `db.py` | Persistance SQLite (`pompesbot.db`, stdlib `sqlite3`) : cache KDA par PUUID et par queue (TTL 6h), historique des parties (`games`), sessions, parties traitées, équipes récentes du propriétaire. Importe les anciens JSON au premier lancement (renommés en `*.migrated`) |
 | `pushups.py` | Formule de calcul des pompes basée sur le ratio KDA réel / KDA moyen des 20 dernières parties |
 | `embed_builder.py` | Construction de l'embed Discord post-partie : 3 champs inline (Joueur / KDA · Dmg / Pompes), alignés par Discord ; `mark_player_done` ajoute ✅ sur la ligne d'un joueur |
-| `views.py` | Bouton « ✅ J'ai fait mes pompes » (DynamicItem, custom_id `pompes:done:<match_id>`) : reste fonctionnel après redémarrage |
-| `reports.py` | Embeds de bilan : fin de session, récap hebdo, `/stats` |
+| `views.py` | Boutons sous l'embed (DynamicItem, fonctionnels après redémarrage) : un par joueur avec l'icône de son champion (`pompes:detail:<match_id>:<participantId>`, détail du calcul en message éphémère) et « ✅ J'ai fait mes pompes » (`pompes:done:<match_id>`) |
+| `achievements.py` | Succès (une fois par joueur, table `achievements`) et records de la saison (année civile) |
+| `reports.py` | Embeds de bilan : fin de session, récap hebdo, `/stats`, `/succes`, détail du calcul des pompes |
 | `champion_icons.py` | Icônes de champion : téléchargées depuis Data Dragon et enregistrées comme emojis d'application à la première apparition (repli : nom du champion) |
-| `commands.py` | Slash commands : `/session`, `/stats`, `/lier`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin), avec autocomplétion des pseudos. Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
+| `commands.py` | Slash commands : `/session`, `/stats`, `/succes`, `/lier`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin), avec autocomplétion des pseudos. Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
 
 ## Catégories de joueurs
 
@@ -82,6 +83,9 @@ total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 - Défaite : +3 pompes
 - First blood victim : +1 / First blood kill : -1 / Top damage : -1
 - Résultat planché à `min_pompes` de la catégorie
+- Série noire : à partir de la 3e défaite d'affilée dans la session, ×1,2 (`LOSS_STREAK_*`)
+- Intouchable (0 mort) : −5 après le plancher, sans descendre sous 0 (`DEATHLESS_BONUS`)
+- `calculate_pushups` renvoie aussi le détail du calcul, stocké en JSON dans `games.breakdown` et affiché par les boutons de détail
 
 ## Queues surveillées
 
@@ -101,6 +105,10 @@ Une session regroupe les parties jusqu'à `SESSION_IDLE_HOURS` (6 h) sans partie
 ## Pompes faites
 
 Chaque joueur lie son compte Discord à son pseudo avec `/lier` (table `discord_links`). Le bouton ✅ sous un embed ne valide que les pompes du joueur lié (`games.done_at`). `/session`, `/stats` et le récap hebdo affichent les pompes faites / dues.
+
+## Succès et records
+
+`achievements.ACHIEVEMENTS` liste les succès. Ceux d'une partie sont évalués en lecture seule (`new_game_achievements`), annoncés dans l'embed, puis enregistrés (`db.unlock`) seulement après l'envoi : un échec Discord suivi d'un nouvel essai les annonce quand même. Centurion et Machine (pompes validées) sont vérifiés au clic sur ✅. Les records de la saison (pompes, kills, dégâts sur une partie) ne sont annoncés qu'à partir de `RECORD_MIN_GAMES` parties dans l'année.
 
 ## Récap hebdo
 

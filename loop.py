@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import discord
 from discord.ext import tasks
 
+from achievements import new_game_achievements, season_records
 from champion_icons import champion_icon
 from config import (
     ARENA_GAME_MODE,
@@ -28,6 +29,7 @@ from config import (
 )
 from db import (
     _match_order,
+    current_streak,
     get_meta,
     get_session_total,
     is_friend,
@@ -40,6 +42,7 @@ from db import (
     record_team,
     rollover_if_idle,
     set_meta,
+    unlock,
 )
 from embed_builder import SPECIAL_ICONS, build_embed
 from pushups import calculate_pushups
@@ -51,7 +54,7 @@ from riot_api import (
     get_puuid,
     get_recent_match_ids,
 )
-from views import done_view
+from views import game_view
 
 log = logging.getLogger("PompesBot")
 
@@ -176,6 +179,8 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
         if best is None or p.get("totalDamageDealtToChampions", 0) > best.get("totalDamageDealtToChampions", 0):
             top_by_team[team] = p
     top_dmg_ids = {p["participantId"] for p in top_by_team.values()}
+    top_game_dmg_id = max(participants, key=lambda p: p.get("totalDamageDealtToChampions", 0),
+                          default={}).get("participantId")
 
     results = []
     for p in participants:
@@ -194,21 +199,29 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
         is_fb_victim = pid == fb_victim_pid
         is_top_dmg   = pid in top_dmg_ids
 
+        # Série en cours dans la session, partie actuelle comprise.
+        prev_win, prev_len = current_streak(pu)
+        streak = prev_len + 1 if prev_win == win else 1
+
         stats = await get_player_kda_stats(p_name, pu, queue, mode)
-        nb_pompes, level_label = calculate_pushups(
+        nb_pompes, level_label, breakdown = calculate_pushups(
             k, d, a, p_name, stats, win,
             fb_kill=is_fb_kill,
             fb_victim=is_fb_victim,
             top_damage=is_top_dmg,
+            loss_streak=0 if win else streak,
         )
 
         icons = ""
-        if is_fb_kill:   icons += SPECIAL_ICONS["fb_kill"]
-        if is_fb_victim: icons += SPECIAL_ICONS["fb_victim"]
-        if is_top_dmg:   icons += SPECIAL_ICONS["top_damage"]
+        if is_fb_kill:             icons += SPECIAL_ICONS["fb_kill"]
+        if is_fb_victim:           icons += SPECIAL_ICONS["fb_victim"]
+        if is_top_dmg:             icons += SPECIAL_ICONS["top_damage"]
+        if breakdown["loss_streak"]: icons += SPECIAL_ICONS["loss_streak"]
+        if breakdown["deathless"]:   icons += SPECIAL_ICONS["deathless"]
 
         results.append({
             "puuid":         pu,
+            "pid":           pid,
             "name":          p_name,
             "champion":      p.get("championName", "—"),
             "champ":         await champion_icon(p.get("championId", 0), p.get("championName", "—")),
@@ -222,16 +235,29 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
             "pompes":        nb_pompes,
             "total_session": get_session_total(pu) + nb_pompes,
             "icons":         icons,
+            "breakdown":     breakdown,
+            "fb_kill":       is_fb_kill,
+            "top_game_damage": pid == top_game_dmg_id,
+            "pentakills":    p.get("pentaKills", 0),
+            "loss_streak":   0 if win else streak,
+            "win_streak":    streak if win else 0,
         })
 
     if not results:
         return True
 
-    embed = build_embed(results, match_id, mode)
-    await channel.send(embed=embed, view=done_view(match_id))
+    unlocked = {r["puuid"]: new_game_achievements(r) for r in results}
+    records  = season_records(match_id, ended_at, results)
+    embed = build_embed(results, match_id, mode, achievements=[
+        (r["name"], code) for r in results for code in unlocked[r["puuid"]]
+    ], records=records)
+    await channel.send(embed=embed, view=game_view(match_id, results))
 
-    # Les résultats ne sont enregistrés qu'une fois l'embed posté (pas de double comptage en cas de retry).
+    # Résultats et succès enregistrés seulement une fois l'embed posté (pas de double comptage en cas de retry).
     record_game(match_id, mode, ended_at, results)
+    for puuid, codes in unlocked.items():
+        for code in codes:
+            unlock(puuid, code, match_id)
     return True
 
 

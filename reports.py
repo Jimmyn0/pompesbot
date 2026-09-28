@@ -2,10 +2,12 @@
 Embeds de bilan : fin de session, récap hebdomadaire, statistiques d'un joueur.
 """
 
+import math
 from datetime import datetime
 
 import discord
 
+from achievements import ACHIEVEMENTS
 from db import count_games_since, leaderboard, session_bounds, session_leaderboard, worst_game_since
 
 MEDALS = ["🥇", "🥈", "🥉"]
@@ -109,3 +111,56 @@ def stats_embed(stats: dict) -> discord.Embed:
     )
     embed.set_footer(text=" · ".join(f"{m} : {c}" for m, c in sorted(stats["modes"].items(), key=lambda x: -x[1])))
     return embed
+
+
+def _signed(value: float) -> str:
+    return f"+{value:g}" if value > 0 else f"{value:g}".replace("-", "−")
+
+
+def breakdown_embed(name: str, champion: str, mode: str, pompes: int, b: dict) -> discord.Embed:
+    """Détail du calcul des pompes d'un joueur, affiché en message éphémère."""
+    k, d, a = b["kda"]
+    avg = b["avg"]
+    lines = [
+        f"**Catégorie {b['category']}** · {champion} · {mode}",
+        "",
+        f"Ta partie : `{k}/{d}/{a}` · ta moyenne : `{avg['K']:g}/{avg['D']:g}/{avg['A']:g}`",
+        f"• Morts : {d} ÷ {avg['D']:g} = ×{b['ratio_mort']:g} de ta moyenne",
+        f"• Kills + ½ assists : {b['score_reel']:g} ÷ {b['score_moyen']:g} = ×{b['ratio_off']:g} de ta moyenne",
+        "",
+    ]
+    for label, value in b["steps"]:
+        lines.append(f"`{_signed(value):>6}` {label}" if label != "Base" else f"`{value:>6g}` Base")
+    lines.append(f"`{'= ' + format(b['raw'], 'g'):>6}` Sous-total")
+    if b["floored"]:
+        lines.append(f"`{b['min']:>6}` Minimum de la catégorie {b['category']} (sous-total plus bas)")
+    else:
+        lines.append(f"`{math.floor(b['raw']):>6}` Arrondi à l'inférieur")
+    if b["loss_streak"]:
+        lines.append(f"` ×1,2 ` Série noire : {b['loss_streak']}e défaite d'affilée")
+    if b["deathless"]:
+        lines.append("`    −5` Intouchable : aucune mort")
+
+    embed = discord.Embed(
+        title=f"💪 {name} — {pompes} pompes",
+        description="\n".join(lines),
+        color=0x3498DB,
+    )
+    embed.set_footer(
+        text=f"Mourir 2× plus que ta moyenne : +{b['mult_mort']} · "
+             f"Faire 2× plus de kills + ½ assists que ta moyenne : −{b['mult_kill']}"
+    )
+    return embed
+
+
+def achievements_embed(name: str, unlocked: list[tuple[str, float]]) -> discord.Embed:
+    have = {code for code, _ in unlocked}
+    lines = [
+        f"{emoji} **{title}** — {cond}" if code in have else f"🔒 ~~{title}~~ — {cond}"
+        for code, (emoji, title, cond) in ACHIEVEMENTS.items()
+    ]
+    return discord.Embed(
+        title=f"🏅 Succès de {name} ({len(have)}/{len(ACHIEVEMENTS)})",
+        description="\n".join(lines),
+        color=0xF1C40F,
+    )

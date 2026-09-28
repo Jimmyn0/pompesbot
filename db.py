@@ -58,11 +58,22 @@ CREATE TABLE IF NOT EXISTS games (
     win        INTEGER NOT NULL,
     pompes     INTEGER NOT NULL,
     ended_at   REAL    NOT NULL,
-    done_at    REAL,                -- date à laquelle le joueur a validé ses pompes
+    done_at        REAL,            -- date à laquelle le joueur a validé ses pompes
+    participant_id INTEGER,         -- numéro du joueur dans la partie (boutons de détail)
+    breakdown      TEXT,            -- détail du calcul des pompes (JSON)
     PRIMARY KEY (match_id, puuid)
 );
 CREATE INDEX IF NOT EXISTS games_session ON games(session_id);
 CREATE INDEX IF NOT EXISTS games_puuid   ON games(puuid);
+
+-- Succès débloqués (une seule fois par joueur).
+CREATE TABLE IF NOT EXISTS achievements (
+    puuid       TEXT NOT NULL,
+    code        TEXT NOT NULL,
+    match_id    TEXT,
+    unlocked_at REAL NOT NULL,
+    PRIMARY KEY (puuid, code)
+);
 
 -- Compte Discord -> joueur LoL (via /lier).
 CREATE TABLE IF NOT EXISTS discord_links (
@@ -110,9 +121,11 @@ def _connect(path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
-    # Bases créées avant l'ajout de done_at.
-    if "done_at" not in {r["name"] for r in conn.execute("PRAGMA table_info(games)")}:
-        conn.execute("ALTER TABLE games ADD COLUMN done_at REAL")
+    # Colonnes ajoutées après la création de la table, pour les bases existantes.
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(games)")}
+    for column, sql_type in (("done_at", "REAL"), ("participant_id", "INTEGER"), ("breakdown", "TEXT")):
+        if column not in existing:
+            conn.execute(f"ALTER TABLE games ADD COLUMN {column} {sql_type}")
     return conn
 
 
@@ -196,13 +209,83 @@ def record_game(match_id: str, mode: str, ended_at: float, results: Iterable[dic
     with c:
         c.execute("BEGIN")
         c.executemany(
-            f"INSERT OR REPLACE INTO games ({GAME_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT OR REPLACE INTO games ({GAME_COLUMNS}, participant_id, breakdown) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (match_id, r["puuid"], r["name"], session_id, mode, r["champion"],
-                 r["kills"], r["deaths"], r["assists"], r["damage"], int(r["win"]), r["pompes"], ended_at)
+                 r["kills"], r["deaths"], r["assists"], r["damage"], int(r["win"]), r["pompes"], ended_at,
+                 r.get("pid"), json.dumps(r["breakdown"], ensure_ascii=False) if r.get("breakdown") else None)
                 for r in results
             ],
         )
+
+
+def get_breakdown(match_id: str, participant_id: int) -> dict | None:
+    """Pseudo, champion, pompes et détail du calcul d'un joueur sur une partie."""
+    row = conn().execute(
+        "SELECT name, champion, mode, pompes, breakdown FROM games WHERE match_id = ? AND participant_id = ?",
+        (match_id, participant_id),
+    ).fetchone()
+    if not row or not row["breakdown"]:
+        return None
+    return {**dict(row), "breakdown": json.loads(row["breakdown"])}
+
+
+def current_streak(puuid: str) -> tuple[bool | None, int]:
+    """Série en cours du joueur dans la session : (victoire ?, longueur), (None, 0) sans partie."""
+    rows = conn().execute(
+        f"SELECT win FROM games WHERE session_id = ? AND puuid = ? AND {REAL_GAMES} ORDER BY ended_at DESC",
+        (current_session_id(), puuid),
+    ).fetchall()
+    if not rows:
+        return None, 0
+    first = bool(rows[0]["win"])
+    length = 0
+    for r in rows:
+        if bool(r["win"]) != first:
+            break
+        length += 1
+    return first, length
+
+
+def done_total(puuid: str) -> int:
+    """Pompes validées au total (tous temps)."""
+    return conn().execute(
+        "SELECT COALESCE(SUM(pompes), 0) FROM games WHERE puuid = ? AND done_at IS NOT NULL", (puuid,)
+    ).fetchone()[0]
+
+
+def season_record(column: str, since: float, exclude_match: str) -> tuple[int, int]:
+    """(meilleure valeur de `column` depuis `since`, nb de parties) hors partie `exclude_match`."""
+    assert column in ("pompes", "kills", "damage")
+    row = conn().execute(
+        f"SELECT COALESCE(MAX({column}), 0), COUNT(DISTINCT match_id) FROM games "
+        f"WHERE ended_at >= ? AND match_id != ? AND {REAL_GAMES}",
+        (since, exclude_match),
+    ).fetchone()
+    return row[0], row[1]
+
+
+# --- Succès ---
+
+def unlock(puuid: str, code: str, match_id: str | None = None) -> bool:
+    """Débloque un succès ; True si c'est la première fois."""
+    cur = conn().execute(
+        "INSERT OR IGNORE INTO achievements VALUES (?, ?, ?, ?)", (puuid, code, match_id, time.time())
+    )
+    return cur.rowcount > 0
+
+
+def has_achievement(puuid: str, code: str) -> bool:
+    return conn().execute(
+        "SELECT 1 FROM achievements WHERE puuid = ? AND code = ?", (puuid, code)
+    ).fetchone() is not None
+
+
+def achievements_of(puuid: str) -> list[tuple[str, float]]:
+    return [(r["code"], r["unlocked_at"]) for r in conn().execute(
+        "SELECT code, unlocked_at FROM achievements WHERE puuid = ? ORDER BY unlocked_at", (puuid,)
+    )]
 
 
 def leaderboard(where: str, params: tuple) -> list[dict]:

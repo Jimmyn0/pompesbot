@@ -1,7 +1,6 @@
 """
-Slash commands : /session, /stats, /lier, /potes, /reset_session (admin), /refresh_kda (admin).
+Slash commands : /session, /stats, /succes, /lier, /potes, /reset_session (admin), /refresh_kda (admin).
 """
-
 
 import discord
 from discord import app_commands
@@ -9,6 +8,7 @@ from discord.ext import commands
 
 from config import FRIEND_LOOKBACK, FRIEND_MIN_GAMES
 from db import (
+    achievements_of,
     find_player,
     invalidate_kda,
     kda_player_names,
@@ -20,7 +20,7 @@ from db import (
     reset_session,
     session_leaderboard,
 )
-from reports import leaderboard_lines, stats_embed
+from reports import achievements_embed, leaderboard_lines, stats_embed
 
 
 async def player_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
@@ -84,6 +84,21 @@ def setup(bot: commands.Bot) -> None:
             )
             return
         await interaction.response.send_message(embed=stats_embed(stats))
+
+    @tree.command(name="succes", description="Succès débloqués par un joueur")
+    @app_commands.describe(joueur="Pseudo Riot (par défaut : le tien, via /lier)")
+    @app_commands.autocomplete(joueur=player_autocomplete)
+    async def cmd_succes(interaction: discord.Interaction, joueur: str | None = None) -> None:
+        found = find_player(joueur) if joueur else linked_player(interaction.user.id)
+        if not found:
+            await interaction.response.send_message(
+                f"Je ne connais pas **{joueur}**." if joueur
+                else "Précise un joueur, ou lie ton compte avec `/lier` pour voir tes succès.",
+                ephemeral=True,
+            )
+            return
+        puuid, name = found
+        await interaction.response.send_message(embed=achievements_embed(name, achievements_of(puuid)))
 
     @tree.command(name="potes", description="Liste les potes détectés automatiquement")
     async def cmd_potes(interaction: discord.Interaction) -> None:
