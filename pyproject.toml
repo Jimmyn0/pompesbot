@@ -1,0 +1,22 @@
+[project]
+name = "pompesbot"
+version = "3.0.0"
+description = "Bot Discord qui transforme vos parties LoL (ARAM, URF, Arena) en pompes"
+requires-python = ">=3.13"
+# Les dépendances sont dans requirements.txt (runtime) et requirements-dev.txt (tests, lint).
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = ["old"]
+
+[tool.ruff.lint]
+select = ["F", "E4", "E7", "E9", "W", "B", "UP", "I"]
+# Le code aligne volontairement les petites instructions sur une ligne (`if fb_kill: total -= 1`).
+ignore = ["E701"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

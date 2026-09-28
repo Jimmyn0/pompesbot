@@ -11,7 +11,7 @@ import logging
 import os
 import sqlite3
 import time
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from config import (
     CACHE_FILE,
@@ -116,7 +116,7 @@ def _connect(path: str) -> sqlite3.Connection:
     return conn
 
 
-_conn: Optional[sqlite3.Connection] = None
+_conn: sqlite3.Connection | None = None
 
 
 def conn() -> sqlite3.Connection:
@@ -127,7 +127,7 @@ def conn() -> sqlite3.Connection:
     return _conn
 
 
-def init(path: Optional[str] = None) -> None:
+def init(path: str | None = None) -> None:
     """Ouvre la base (chemin alternatif possible, pour les tests)."""
     global _conn
     if _conn is not None:
@@ -139,7 +139,7 @@ def init(path: Optional[str] = None) -> None:
 
 # --- Cache KDA ---
 
-def get_cached_kda(puuid: str, queue: int) -> Optional[dict]:
+def get_cached_kda(puuid: str, queue: int) -> dict | None:
     row = conn().execute(
         "SELECT kbar, abar, dbar, ts FROM kda_cache WHERE puuid = ? AND queue = ?", (puuid, queue)
     ).fetchone()
@@ -224,11 +224,11 @@ def leaderboard(where: str, params: tuple) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def session_leaderboard(session_id: Optional[int] = None) -> list[dict]:
+def session_leaderboard(session_id: int | None = None) -> list[dict]:
     return leaderboard("session_id = ?", (session_id or current_session_id(),))
 
 
-def session_bounds(session_id: int) -> tuple[Optional[float], Optional[float], int]:
+def session_bounds(session_id: int) -> tuple[float | None, float | None, int]:
     """(fin de la première partie, fin de la dernière, nb de parties) d'une session."""
     row = conn().execute(
         f"SELECT MIN(ended_at), MAX(ended_at), COUNT(DISTINCT match_id) FROM games "
@@ -243,7 +243,7 @@ def reset_session() -> None:
     conn().execute("UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL", (time.time(),))
 
 
-def rollover_if_idle(ended_at: float, idle_seconds: float) -> Optional[int]:
+def rollover_if_idle(ended_at: float, idle_seconds: float) -> int | None:
     """Clôt la session en cours si sa dernière partie date de plus de `idle_seconds` avant `ended_at`.
 
     Retourne l'id de la session clôturée (pour poster son bilan), sinon None.
@@ -294,7 +294,7 @@ def known_players() -> dict[str, str]:
     return players
 
 
-def find_player(name: str) -> Optional[tuple[str, str]]:
+def find_player(name: str) -> tuple[str, str] | None:
     """(puuid, pseudo) d'un joueur connu ; recherche insensible à la casse."""
     for n, puuid in known_players().items():
         if n.lower() == name.lower():
@@ -306,14 +306,14 @@ def link_discord(discord_id: int, puuid: str, name: str) -> None:
     conn().execute("INSERT OR REPLACE INTO discord_links VALUES (?, ?, ?)", (discord_id, puuid, name))
 
 
-def linked_player(discord_id: int) -> Optional[tuple[str, str]]:
+def linked_player(discord_id: int) -> tuple[str, str] | None:
     row = conn().execute("SELECT puuid, name FROM discord_links WHERE discord_id = ?", (discord_id,)).fetchone()
     return (row["puuid"], row["name"]) if row else None
 
 
 # --- Statistiques ---
 
-def player_stats(puuid: str) -> Optional[dict]:
+def player_stats(puuid: str) -> dict | None:
     c = conn()
     base = f"FROM games WHERE puuid = ? AND {REAL_GAMES}"
     row = c.execute(
@@ -344,7 +344,7 @@ def player_stats(puuid: str) -> Optional[dict]:
     return stats
 
 
-def worst_game_since(since: float) -> Optional[dict]:
+def worst_game_since(since: float) -> dict | None:
     row = conn().execute(
         f"SELECT * FROM games WHERE ended_at >= ? AND {REAL_GAMES} ORDER BY pompes DESC LIMIT 1", (since,)
     ).fetchone()
@@ -359,7 +359,7 @@ def count_games_since(since: float) -> int:
 
 # --- Méta ---
 
-def get_meta(key: str) -> Optional[str]:
+def get_meta(key: str) -> str | None:
     row = conn().execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
     return row[0] if row else None
 
@@ -443,10 +443,10 @@ def known_friends() -> dict[str, tuple[str, int]]:
 
 # --- Migration depuis les anciens fichiers JSON ---
 
-def _load_json(path: str) -> Optional[dict]:
+def _load_json(path: str) -> dict | None:
     if not os.path.exists(path):
         return None
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 

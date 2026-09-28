@@ -22,7 +22,7 @@ Les joueurs sont répartis en catégories (`ELT`, `CNF`, `STD`) avec des multipl
 
 ## Prérequis
 
-- Python 3.13+
+- Python 3.13+ (ou Docker)
 - Un token Discord bot ([discord.com/developers](https://discord.com/developers))
 - Une clé API Riot ([developer.riotgames.com](https://developer.riotgames.com))
 
@@ -50,6 +50,16 @@ DISCORD_CHANNEL_ID=id_du_salon
 python main.py
 ```
 
+## Hébergement avec Docker
+
+```bash
+mkdir data
+cp players.json data/        # et pompesbot.db si vous migrez une installation existante
+docker compose up -d --build
+```
+
+Le conteneur redémarre automatiquement. `players.json` et la base SQLite sont dans `./data` (volume `/data`), les secrets dans `.env`.
+
 ## Joueurs suivis
 
 Renseignez votre Riot ID (`OWNER`) dans `players.json` (non versionné). Vos potes sont détectés automatiquement parmi vos coéquipiers récurrents (au moins 2 parties ensemble sur les 40 dernières), et `/potes` les liste.
@@ -68,3 +78,13 @@ Renseignez votre Riot ID (`OWNER`) dans `players.json` (non versionné). Vos pot
 ```bash
 cp players.example.json players.json
 ```
+
+## Développement
+
+```bash
+pip install -r requirements-dev.txt
+pytest          # tests (hors ligne : fausse API Riot, faux Discord, base SQLite temporaire)
+ruff check .    # lint
+```
+
+La CI GitHub Actions lance le lint et les tests sur Python 3.13 et 3.14, et construit l'image Docker, à chaque PR et à chaque push sur `main`.

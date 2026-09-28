@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+old
+tests
+data
+.env
+players.json*
+*.db
+*.db-*
+*.migrated
+*.json.tmp

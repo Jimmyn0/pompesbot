@@ -11,3 +11,4 @@ match_state.json
 pompesbot.db
 pompesbot.db-*
 *.migrated
+data/

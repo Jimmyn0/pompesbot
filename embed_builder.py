@@ -2,6 +2,8 @@
 Construction de l'embed Discord post-partie.
 """
 
+import copy
+
 import discord
 
 WIN_COLOR  = 0x2ECC71
@@ -69,8 +71,8 @@ def build_embed(results: list[dict], match_id: str, queue_name: str = "ARAM") ->
 
 
 def mark_player_done(embed: discord.Embed, player_name: str) -> discord.Embed:
-    """Ajoute ✅ sur la ligne du joueur dans la colonne Pompes d'un embed déjà posté."""
-    embed = embed.copy()
+    """Ajoute ✅ sur la ligne du joueur dans la colonne Pompes d'un embed déjà posté (copie modifiée)."""
+    embed = discord.Embed.from_dict(copy.deepcopy(embed.to_dict()))   # Embed.copy() partage les champs
     fields = embed.fields
     if len(fields) < 3:
         return embed

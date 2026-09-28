@@ -24,6 +24,22 @@ cp players.example.json players.json
 # puis renseignez OWNER (votre Riot ID : name + tag)
 ```
 
+## Tests et lint
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+ruff check .
+```
+
+- Les tests sont hors ligne : `tests/conftest.py` crée un `players.json` de test dans un dossier temporaire (via `POMPESBOT_DATA_DIR`) avant d'importer le bot, et chaque test a sa propre base SQLite (fixture `fresh_db`). Les doublures (fausse API Riot, faux salon, fausses interactions) sont dans `tests/fakes.py`.
+- `ruff` : pas de `ruff format`, le code aligne volontairement ses colonnes (voir `pyproject.toml`).
+- CI : `.github/workflows/ci.yml` (lint + tests sur Python 3.13 et 3.14, build de l'image Docker).
+
+## Données et Docker
+
+`POMPESBOT_DATA_DIR` (par défaut le dossier du bot) contient `players.json` et `pompesbot.db`. L'image Docker utilise `/data` (volume `./data` dans `docker-compose.yml`).
+
 ## Architecture
 
 Le bot est découpé en modules spécialisés — `main.py` est le seul point d'entrée, il instancie le bot, enregistre les commandes et démarre la boucle périodique.

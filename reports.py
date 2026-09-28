@@ -3,7 +3,6 @@ Embeds de bilan : fin de session, récap hebdomadaire, statistiques d'un joueur.
 """
 
 from datetime import datetime
-from typing import Optional
 
 import discord
 
@@ -30,7 +29,7 @@ def _duration(start: float, end: float) -> str:
     return f"{minutes // 60} h {minutes % 60:02d}" if minutes >= 60 else f"{minutes} min"
 
 
-def session_summary_embed(session_id: int) -> Optional[discord.Embed]:
+def session_summary_embed(session_id: int) -> discord.Embed | None:
     board = session_leaderboard(session_id)
     if not board:
         return None
@@ -43,7 +42,7 @@ def session_summary_embed(session_id: int) -> Optional[discord.Embed]:
     return embed
 
 
-def weekly_recap_embed(since: float, until: datetime) -> Optional[discord.Embed]:
+def weekly_recap_embed(since: float, until: datetime) -> discord.Embed | None:
     board = leaderboard("ended_at >= ? AND match_id != 'MIGRATION'", (since,))
     if not board:
         return None
