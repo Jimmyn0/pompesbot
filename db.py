@@ -364,16 +364,23 @@ def mark_done(match_id: str, puuid: str) -> tuple[str, int, str]:
 # --- Joueurs et comptes Discord ---
 
 def known_players() -> dict[str, str]:
-    """Pseudo le plus récent -> puuid, pour tous les joueurs connus (cache KDA, potes, parties)."""
+    """Pseudo le plus récent -> puuid, pour le propriétaire et ses potes uniquement.
+
+    Sources : cache KDA et parties (qui ne concernent que les joueurs suivis), puis les potes
+    détectés. Pas owner_teams brut : il contient aussi les inconnus croisés en partie.
+    """
+    rows: list[tuple[str, str]] = [
+        (r["puuid"], r["name"]) for r in conn().execute("SELECT puuid, name FROM kda_cache ORDER BY ts")
+    ]
+    rows += [(puuid, name) for puuid, (name, _) in known_friends().items()]
+    rows += [
+        (r["puuid"], r["name"])
+        for r in conn().execute(f"SELECT puuid, name FROM games WHERE {REAL_GAMES} ORDER BY ended_at")
+    ]
     players: dict[str, str] = {}
-    for sql in (
-        "SELECT puuid, name FROM kda_cache",
-        "SELECT puuid, name FROM owner_teams WHERE puuid != '' ORDER BY match_order",
-        f"SELECT puuid, name FROM games WHERE {REAL_GAMES} ORDER BY ended_at",
-    ):
-        for r in conn().execute(sql):
-            players = {n: p for n, p in players.items() if p != r["puuid"]}
-            players[r["name"]] = r["puuid"]
+    for puuid, name in rows:   # la dernière source l'emporte : pseudo le plus récent
+        players = {n: p for n, p in players.items() if p != puuid}
+        players[name] = puuid
     return players
 
 
