@@ -81,7 +81,7 @@ async def test_detail_buttons(ready, now, monkeypatch):
     await views.DetailButton("EUW1_40", 1).callback(i)
     content, embed, ephemeral = i.reply
     assert ephemeral and embed.title.startswith("💪 A — ")
-    assert "Catégorie ELT" in embed.description and "`5/5/10`" in embed.description
+    assert "Niveau Bodybuilder" in embed.description and "`5/5/10`" in embed.description
     assert "Base" in embed.description and "Kills et assists" in embed.description
 
     i = FakeInteraction()

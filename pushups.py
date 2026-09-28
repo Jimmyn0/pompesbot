@@ -11,16 +11,29 @@ from config import (
     LOSS_STREAK_MULTIPLIER,
     LOSS_STREAK_THRESHOLD,
     PLAYER_CATEGORIES,
+    level_label,
 )
+from db import get_level, set_level
 
 log = logging.getLogger("PompesBot")
 
 BETA = 0.5   # poids des assists dans le score offensif
 
 
-def get_player_category(player_name: str) -> tuple[str, dict]:
+def get_player_category(player_name: str, puuid: str | None = None) -> tuple[str, dict]:
+    """Niveau du joueur : celui choisi avec /difficulte, sinon celui de players.json (par pseudo).
+
+    Un niveau trouvé dans players.json est enregistré pour ce PUUID : il survit ensuite à un
+    changement de pseudo, et /difficulte le remplace.
+    """
+    if puuid:
+        level = get_level(puuid)
+        if level in PLAYER_CATEGORIES:
+            return level, PLAYER_CATEGORIES[level]
     for label, cfg in PLAYER_CATEGORIES.items():
         if label != DEFAULT_CATEGORY and player_name in cfg.get("players", []):
+            if puuid:
+                set_level(puuid, label, player_name)
             return label, cfg
     return DEFAULT_CATEGORY, PLAYER_CATEGORIES[DEFAULT_CATEGORY]
 
@@ -36,13 +49,14 @@ def calculate_pushups(
     fb_victim:   bool = False,
     top_damage:  bool = False,
     loss_streak: int  = 0,
+    puuid:       str | None = None,
 ) -> tuple[int, str, dict]:
     """Retourne (nb_pompes, categorie_label, détail du calcul).
 
     `stats` = KDA moyen {Kbar, Abar, Dbar} ; `loss_streak` = nombre de défaites d'affilée
     dans la session, partie en cours comprise. Le détail est affiché par les boutons de l'embed.
     """
-    cat_label, cfg = get_player_category(player_name)
+    cat_label, cfg = get_player_category(player_name, puuid)
     BASE       = cfg["base"]
     MIN_POMPES = cfg["min_pompes"]
     MULT_MORT  = cfg["mult_mort"]
@@ -81,6 +95,7 @@ def calculate_pushups(
 
     breakdown = {
         "category":    cat_label,
+        "level":       level_label(cat_label),
         "min":         MIN_POMPES,
         "mult_mort":   MULT_MORT,
         "mult_kill":   MULT_KILL,

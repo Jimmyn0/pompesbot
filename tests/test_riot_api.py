@@ -107,3 +107,15 @@ async def test_riot_id_is_url_encoded(monkeypatch):
     riot_api.puuid_cache.clear()
     assert await riot_api.get_puuid("Bard est là", "EUW") == "P"
     assert seen == ["/riot/account/v1/accounts/by-riot-id/Bard%20est%20l%C3%A0/EUW"]
+
+
+async def test_no_riot_call_for_client_only_modes(monkeypatch):
+    calls = []
+
+    async def fake_get(path, params=None):
+        calls.append(path)
+        return []
+
+    monkeypatch.setattr(riot_api.client, "get", fake_get)
+    stats = await riot_api.get_player_kda_stats("A", "pA", 2400, "ARAM Mayhem")
+    assert stats == riot_api.DEFAULT_KDA["ARAM Mayhem"] and calls == []

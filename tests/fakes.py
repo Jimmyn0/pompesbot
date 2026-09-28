@@ -32,6 +32,7 @@ class FakeRiot:
         self.first_blood = (1, 2)
         self.kda = {"Kbar": 5, "Abar": 10, "Dbar": 5}
         self.kda_calls: list[str] = []
+        self.puuid_calls: list[str] = []                 # pseudos demandés à Riot
         self.kda_queries: list[tuple[str, int]] = []   # (pseudo, queue)
 
     def add(self, match_id, m):
@@ -39,6 +40,7 @@ class FakeRiot:
         self.matches[match_id] = m
 
     async def get_puuid(self, name, tag):
+        self.puuid_calls.append(name)
         return "p" + name
 
     async def get_recent_match_ids(self, puuid, count=5, queue=None):

@@ -163,13 +163,14 @@ async def to_match_info(detail: dict) -> dict:
     }
 
 
-async def kda_baseline(lcu_puuid: str, queue: int, min_games: int = 3) -> dict | None:
-    """KDA moyen d'un joueur dans ce mode, sur les parties de l'historique du client où il apparaît.
+async def kda_samples(lcu_puuid: str, queue: int) -> dict[str, tuple[int, int, int, float]]:
+    """K/D/A d'un joueur dans ce mode, par partie de l'historique du client où il apparaît.
 
-    `lcu_puuid` : PUUID du client (non chiffré). Le client ne donne que l'historique du compte
-    connecté : pour un pote, ce sont les parties jouées ensemble. None s'il y en a moins de `min_games`.
+    Retourne {match_id: (kills, morts, assists, fin de partie en secondes)}. `lcu_puuid` : PUUID
+    du client (non chiffré). Le client ne donne que l'historique du compte connecté : pour un
+    pote, ce sont les parties jouées ensemble.
     """
-    kills = deaths = assists = n = 0
+    samples: dict[str, tuple[int, int, int, float]] = {}
     for game in await recent_games():
         if game.get("queueId") != queue:
             continue
@@ -177,13 +178,9 @@ async def kda_baseline(lcu_puuid: str, queue: int, min_games: int = 3) -> dict |
         if not detail:
             continue
         ids = {pi["participantId"]: pi["player"].get("puuid") for pi in detail["participantIdentities"]}
+        ended = (detail["gameCreation"] + detail["gameDuration"] * 1000) / 1000
         for p in detail["participants"]:
             if ids.get(p["participantId"]) == lcu_puuid:
                 s = p["stats"]
-                kills   += s["kills"]
-                deaths  += s["deaths"]
-                assists += s["assists"]
-                n       += 1
-    if n < min_games:
-        return None
-    return {"Kbar": round(kills / n, 2), "Abar": round(assists / n, 2), "Dbar": round(deaths / n, 2)}
+                samples[match_id(detail)] = (s["kills"], s["deaths"], s["assists"], ended)
+    return samples

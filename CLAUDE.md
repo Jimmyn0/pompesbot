@@ -64,16 +64,16 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 | `lcu.py` | Lecture de l'historique du client League du PC (API locale, lockfile) pour les parties que Riot n'expose pas (ARAM Mayhem) ; conversion au format match-v5 |
 | `dev.py` | Mode test : `/test_partie` et génération de fausses parties |
 | `champion_icons.py` | Icônes de champion : téléchargées depuis Data Dragon et enregistrées comme emojis d'application à la première apparition (repli : nom du champion) |
-| `commands.py` | Slash commands : `/session`, `/stats`, `/succes`, `/lier`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin), avec autocomplétion des pseudos. Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
+| `commands.py` | Slash commands : `/session`, `/stats`, `/succes`, `/lier`, `/difficulte`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin), avec autocomplétion des pseudos. Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
 
-## Catégories de joueurs
+## Niveaux de difficulté
 
-Trois catégories dans `players.json` avec des multiplicateurs différents pour les morts/kills :
-- `ELT` — base 30 pompes, multiplicateurs élevés
-- `CNF` — base 23 pompes
-- `STD` (tous les autres) — base 15 pompes
+Trois niveaux, définis dans `players.json` (`PLAYER_CATEGORIES`) et affichés sous les noms de `config.LEVEL_LABELS` (ou `label` dans `players.json`) :
+- `STD` « Échauffement » — base 15, minimum 5 (niveau par défaut)
+- `CNF` « Athlète » — base 23, minimum 10
+- `ELT` « Bodybuilder » — base 30, minimum 15
 
-Les catégories référencent les joueurs par pseudo (`riotIdGameName`, sans le tag).
+Chaque joueur choisit son niveau avec `/difficulte` (ou à `/lier`), à tout moment ; un admin peut changer celui des autres. Le niveau est stocké par PUUID (table `player_levels`) et s'applique aux parties suivantes. `pushups.get_player_category` : niveau choisi, sinon liste `players` de `players.json` (par pseudo, enregistré pour le PUUID à la première partie, donc insensible aux changements de pseudo ensuite), sinon `STD`.
 
 ## Joueurs suivis
 
@@ -102,9 +102,9 @@ total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 L'API publique de Riot n'expose pas les parties d'ARAM Mayhem (queue 2400) : absentes de l'historique et refusées par ID (403). `lcu.py` les lit dans l'historique du client League ouvert sur le PC du bot (lockfile dans `LCU_LOCKFILES`, `LCU_LOCKFILE` dans le `.env` pour un autre dossier), et `loop._scan_client_games` les fait passer par `post_match` à chaque scan.
 
 - Seules les queues de `LCU_QUEUES` sont lues depuis le client ; les autres restent à l'API Riot.
-- Le client utilise des PUUID bruts, l'API Riot des PUUID chiffrés propres à la clé : `loop._client_match_info` retrouve les seconds via le Riot ID de chaque joueur, et le compte connecté est reconnu par Riot ID (`_is_owner`).
+- Le client utilise des PUUID bruts, l'API Riot des PUUID chiffrés propres à la clé (un appel par Riot ID, mémorisé dans la table `riot_ids`). Pour ne demander que le propriétaire et ses potes, `loop._client_match_info` donne d'abord à chacun un identifiant provisoire `lcu:…` et ne le convertit que si le joueur est déjà connu ou atteint `FRIEND_MIN_GAMES` parties dans l'équipe du propriétaire (décompte local ; `rename_team_member` fusionne ensuite). Le compte connecté est reconnu par Riot ID (`_is_owner`).
 - Première lecture du client (`meta.lcu_seeded`) : l'historique sert à détecter les potes, rien n'est posté.
-- KDA de référence : moyenne des parties de ce mode dans l'historique du client (`lcu.kda_baseline`).
+- KDA de référence (`loop._client_kda_baseline`) : parties de ce mode dans l'historique du client (~20) + celles déjà en base, sans doublon, sur les `CLIENT_KDA_SAMPLE_SIZE` (50) plus récentes ; minimum `CLIENT_KDA_MIN_GAMES` (3), sinon `DEFAULT_KDA`. Aucun appel à Riot pour ces modes (`get_player_kda_stats` ne l'interroge pas pour `LCU_QUEUES`).
 - Client fermé, autre compte connecté ou bot hébergé ailleurs : rien n'est lu, sans erreur. Les parties de moins de 12 h sont rattrapées à la réouverture.
 - Les tests n'accèdent jamais au vrai client (`LCU_LOCKFILE` pointé vers un fichier absent dans `conftest.py`) ; faux client : `FakeClientLoL`.
 

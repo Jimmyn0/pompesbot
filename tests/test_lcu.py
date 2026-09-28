@@ -34,13 +34,39 @@ async def test_to_match_info(client_lol):
     assert lcu.match_id(lcu_game(7995738556, _team(), 0)) == "EUW1_7995738556"
 
 
-async def test_kda_baseline_from_shared_games(client_lol):
+async def test_kda_samples_from_client(client_lol):
     for i in range(3):
-        client_lol.add(lcu_game(100 + i, _team(a_deaths=10 + i), created_ms=i))
+        client_lol.add(lcu_game(100 + i, _team(a_deaths=10 + i), created_ms=i * 1000))
     client_lol.add(lcu_game(200, _team(), created_ms=9, queue=450, game_mode="ARAM"))   # autre mode : ignoré
-    assert await lcu.kda_baseline("brut-A", 2400) == {"Kbar": 6.0, "Abar": 8.0, "Dbar": 11.0}
-    assert await lcu.kda_baseline("brut-A", 2400, min_games=4) is None
-    assert await lcu.kda_baseline("pZ", 2400) is None
+    samples = await lcu.kda_samples("brut-A", 2400)
+    assert samples == {f"EUW1_{100 + i}": (6, 10 + i, 8, i + 1200) for i in range(3)}
+    assert await lcu.kda_samples("brut-Z", 2400) == {}
+
+
+def _db_game(match_id, kills, ended_at, mode="ARAM Mayhem"):
+    db.record_game(match_id, mode, ended_at, [{
+        "puuid": "pA", "name": "A", "champion": "Jinx", "kills": kills, "deaths": 10, "assists": 20,
+        "damage": 1, "win": True, "pompes": 10}])
+
+
+async def test_client_baseline_merges_client_and_database(client_lol, monkeypatch):
+    # Client : 2 parties (6 kills). Base : la même partie EUW1_101 + 2 plus anciennes (20 kills).
+    client_lol.add(lcu_game(100, _team(), created_ms=100_000_000))
+    client_lol.add(lcu_game(101, _team(), created_ms=200_000_000))
+    _db_game("EUW1_101", 99, 1)                    # doublon : la version du client l'emporte
+    _db_game("EUW1_50", 20, 50)
+    _db_game("EUW1_51", 20, 51)
+    _db_game("EUW1_52", 99, 52, mode="ARAM")        # autre mode : ignoré
+
+    baseline = await loop._client_kda_baseline("pA", "brut-A", 2400, "ARAM Mayhem")
+    assert baseline["Kbar"] == round((6 + 6 + 20 + 20) / 4, 2)   # 4 parties distinctes
+
+    monkeypatch.setattr(loop, "CLIENT_KDA_SAMPLE_SIZE", 3)     # seulement les 3 plus récentes
+    baseline = await loop._client_kda_baseline("pA", "brut-A", 2400, "ARAM Mayhem")
+    assert baseline["Kbar"] == round((6 + 6 + 20) / 3, 2)     # EUW1_50, la plus ancienne, est exclue
+
+    monkeypatch.setattr(loop, "CLIENT_KDA_MIN_GAMES", 5)
+    assert await loop._client_kda_baseline("pA", "brut-A", 2400, "ARAM Mayhem") is None
 
 
 async def test_client_closed_returns_none(tmp_path):
@@ -126,3 +152,44 @@ async def test_other_queues_left_to_riot(seeded, now):
     client_lol.add(lcu_game(3, _team(), created_ms=int((now - 1500) * 1000), queue=450, game_mode="ARAM"))
     await loop.scan(FakeBot(channel), 1)
     assert channel.sent == [] and not db.is_processed("EUW1_3")              # l'API Riot s'en charge
+
+
+def _with_newcomer(name):
+    """Même partie, mais « Random » est remplacé par un inconnu vu pour la première fois."""
+    return [(f"p{name}", name, *row[2:]) if row[1] == "Random" else row for row in _team()]
+
+
+async def test_only_owner_and_friends_are_asked_to_riot(riot, client_lol, now):
+    client_lol.add(lcu_game(1, _team(), created_ms=int((now - 3 * 86400) * 1000)))
+    client_lol.add(lcu_game(2, _team(), created_ms=int((now - 2 * 86400) * 1000)))
+    client_lol.add(lcu_game(3, _with_newcomer("Once"), created_ms=int((now - 86400) * 1000)))
+    channel = FakeChannel()
+    await loop.scan(FakeBot(channel), 1)                      # 1re lecture : historique
+    asked = set(riot.puuid_calls)
+    assert {"A", "B", "C", "D", "Random"} <= asked               # toi + joueurs vus 2 fois
+    assert "Once" not in asked                                   # vu une seule fois : aucun appel
+    assert not asked & {"Adv1", "Adv2", "Adv3", "Adv4", "Adv5"}  # jamais les adversaires
+
+    # Nouvelle partie : « Once » revient (2e fois) -> converti et reconnu comme pote.
+    client_lol.add(lcu_game(4, _with_newcomer("Once"), created_ms=int((now - 1500) * 1000)))
+    riot.puuid_calls.clear()
+    await loop.scan(FakeBot(channel), 1)
+    assert "Once" in riot.puuid_calls and db.is_friend("pOnce")
+    assert "Adv1" not in riot.puuid_calls
+
+
+async def test_puuid_is_asked_to_riot_once(monkeypatch):
+    import riot_api
+
+    calls = []
+
+    async def fake_get(path, params=None):
+        calls.append(path)
+        return {"puuid": "P-" + path.rsplit("/", 2)[-2]}
+
+    monkeypatch.setattr(riot_api.client, "get", fake_get)
+    riot_api.puuid_cache.clear()
+    assert await riot_api.get_puuid("Bard est là", "EUW") == "P-Bard%20est%20l%C3%A0"
+    riot_api.puuid_cache.clear()                                 # redémarrage : mémoire vide…
+    assert await riot_api.get_puuid("BARD EST LÀ", "euw") == "P-Bard%20est%20l%C3%A0"   # …mais la base s'en souvient
+    assert len(calls) == 1

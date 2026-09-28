@@ -19,11 +19,12 @@ import aiohttp
 from config import (
     DEFAULT_KDA,
     KDA_SAMPLE_SIZE,
+    LCU_QUEUES,
     REGION_V5,
     RIOT_API_KEY,
     RIOT_RATE_LIMITS,
 )
-from db import get_cached_kda, set_cached_kda
+from db import get_cached_kda, get_cached_puuid, set_cached_kda, set_cached_puuid
 
 log = logging.getLogger("PompesBot")
 
@@ -119,14 +120,20 @@ puuid_cache: dict[str, str] = {}
 
 
 async def get_puuid(game_name: str, tag_line: str) -> str | None:
+    """PUUID (API) d'un Riot ID : mémoire, puis base, puis Riot (une seule fois par joueur)."""
     key = f"{game_name}#{tag_line}".lower()
     if key in puuid_cache:
         return puuid_cache[key]
+    cached = get_cached_puuid(key)
+    if cached:
+        puuid_cache[key] = cached
+        return cached
     data = await client.get(f"/riot/account/v1/accounts/by-riot-id/{quote(game_name, safe='')}/{quote(tag_line, safe='')}")
     if not data or "puuid" not in data:
         log.error(f"PUUID introuvable pour {game_name}#{tag_line}")
         return None
     puuid_cache[key] = data["puuid"]
+    set_cached_puuid(key, data["puuid"])
     log.info(f"PUUID récupéré pour {game_name}")
     return data["puuid"]
 
@@ -178,6 +185,10 @@ async def get_player_kda_stats(player_name: str, puuid: str, queue: int, mode: s
     cached = get_cached_kda(puuid, queue)
     if cached:
         return cached
+    if queue in LCU_QUEUES:
+        # Riot n'a pas l'historique de ce mode (calculé depuis le client quand c'est possible) :
+        # inutile de l'interroger, valeur par défaut du mode.
+        return DEFAULT_KDA.get(mode, DEFAULT_KDA["ARAM"]).copy()
 
     log.info(f"Calcul KDA moyen pour {player_name} (queue {queue}, {KDA_SAMPLE_SIZE} parties)…")
     stats = await fetch_kda(puuid, queue)

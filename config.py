@@ -87,6 +87,9 @@ FRIEND_MIN_GAMES = 2    # un coéquipier vu au moins N fois dans cette fenêtre 
 
 KDA_CACHE_TTL   = 6 * 3600
 KDA_SAMPLE_SIZE = 20   # 21 requêtes par joueur et par mode (limite clé : 100 req / 2 min)
+# Modes lus depuis le client : moyenne sur les parties du client + celles déjà en base (sans appel API).
+CLIENT_KDA_SAMPLE_SIZE = 50
+CLIENT_KDA_MIN_GAMES   = 3
 
 if not os.path.exists(PLAYERS_FILE):
     print(f"[ERREUR] {PLAYERS_FILE} introuvable. Copiez players.example.json → players.json.")
@@ -104,6 +107,17 @@ DEFAULT_CATEGORY        = "STD"
 if DEFAULT_CATEGORY not in PLAYER_CATEGORIES:
     print(f"[ERREUR] players.json : la catégorie {DEFAULT_CATEGORY} est obligatoire.")
     sys.exit(1)
+
+# Noms des niveaux de difficulté affichés sur Discord (surchargeables par "label" dans players.json).
+LEVEL_LABELS = {"STD": "Échauffement", "CNF": "Athlète", "ELT": "Bodybuilder"}
+
+
+def level_label(code: str) -> str:
+    return PLAYER_CATEGORIES.get(code, {}).get("label") or LEVEL_LABELS.get(code, code)
+
+
+# Niveaux du plus facile au plus dur (base de pompes croissante).
+LEVELS = sorted(PLAYER_CATEGORIES, key=lambda code: PLAYER_CATEGORIES[code]["base"])
 
 # KDA moyen de repli par mode, si l'historique du joueur est indisponible.
 DEFAULT_KDA = {

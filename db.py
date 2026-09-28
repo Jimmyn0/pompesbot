@@ -66,6 +66,20 @@ CREATE TABLE IF NOT EXISTS games (
 CREATE INDEX IF NOT EXISTS games_session ON games(session_id);
 CREATE INDEX IF NOT EXISTS games_puuid   ON games(puuid);
 
+-- Niveau de difficulté choisi par chaque joueur (/difficulte), par PUUID : résiste aux changements de pseudo.
+CREATE TABLE IF NOT EXISTS player_levels (
+    puuid      TEXT PRIMARY KEY,
+    level      TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+-- Riot ID (« pseudo#tag » en minuscules) -> PUUID de l'API : chaque joueur n'est demandé à Riot qu'une fois.
+CREATE TABLE IF NOT EXISTS riot_ids (
+    riot_id TEXT PRIMARY KEY,
+    puuid   TEXT NOT NULL
+);
+
 -- Succès débloqués (une seule fois par joueur).
 CREATE TABLE IF NOT EXISTS achievements (
     puuid       TEXT NOT NULL,
@@ -434,6 +448,17 @@ def player_stats(puuid: str) -> dict | None:
     return stats
 
 
+def kda_samples(puuid: str, mode: str) -> dict[str, tuple[int, int, int, float]]:
+    """K/D/A d'un joueur par partie enregistrée dans ce mode : {match_id: (kills, morts, assists, fin)}."""
+    return {
+        r["match_id"]: (r["kills"], r["deaths"], r["assists"], r["ended_at"])
+        for r in conn().execute(
+            f"SELECT match_id, kills, deaths, assists, ended_at FROM games WHERE puuid = ? AND mode = ? AND {REAL_GAMES}",
+            (puuid, mode),
+        )
+    }
+
+
 def worst_game_since(since: float) -> dict | None:
     row = conn().execute(
         f"SELECT * FROM games WHERE ended_at >= ? AND {REAL_GAMES} ORDER BY pompes DESC LIMIT 1", (since,)
@@ -445,6 +470,28 @@ def count_games_since(since: float) -> int:
     return conn().execute(
         f"SELECT COUNT(DISTINCT match_id) FROM games WHERE ended_at >= ? AND {REAL_GAMES}", (since,)
     ).fetchone()[0]
+
+
+# --- Riot ID -> PUUID ---
+
+def get_cached_puuid(riot_id: str) -> str | None:
+    row = conn().execute("SELECT puuid FROM riot_ids WHERE riot_id = ?", (riot_id.lower(),)).fetchone()
+    return row[0] if row else None
+
+
+def set_cached_puuid(riot_id: str, puuid: str) -> None:
+    conn().execute("INSERT OR REPLACE INTO riot_ids VALUES (?, ?)", (riot_id.lower(), puuid))
+
+
+# --- Niveaux de difficulté ---
+
+def get_level(puuid: str) -> str | None:
+    row = conn().execute("SELECT level FROM player_levels WHERE puuid = ?", (puuid,)).fetchone()
+    return row[0] if row else None
+
+
+def set_level(puuid: str, level: str, name: str) -> None:
+    conn().execute("INSERT OR REPLACE INTO player_levels VALUES (?, ?, ?, ?)", (puuid, level, name, time.time()))
 
 
 # --- Méta ---
@@ -481,6 +528,22 @@ def mark_seeded(puuid: str, match_ids: list[str]) -> None:
 
 
 # --- Détection des potes ---
+
+def team_appearances(puuid: str) -> int:
+    """Nombre de parties récentes où ce joueur était dans l'équipe du propriétaire."""
+    return conn().execute(
+        "SELECT COUNT(DISTINCT match_id) FROM owner_teams WHERE puuid = ?", (puuid,)
+    ).fetchone()[0]
+
+
+def rename_team_member(old_puuid: str, new_puuid: str) -> None:
+    """Remplace un identifiant provisoire (« lcu:… ») par le PUUID de l'API dans la fenêtre des équipes."""
+    c = conn()
+    with c:
+        c.execute("BEGIN")
+        c.execute("UPDATE OR IGNORE owner_teams SET puuid = ? WHERE puuid = ?", (new_puuid, old_puuid))
+        c.execute("DELETE FROM owner_teams WHERE puuid = ?", (old_puuid,))
+
 
 def record_team(match_id: str, teammates: dict[str, str]) -> None:
     """Mémorise les coéquipiers du propriétaire sur une partie (fenêtre glissante)."""
@@ -523,7 +586,7 @@ def known_friends() -> dict[str, tuple[str, int]]:
         SELECT puuid,
                (SELECT t2.name FROM owner_teams t2 WHERE t2.puuid = t.puuid ORDER BY t2.match_order DESC LIMIT 1) AS name,
                COUNT(DISTINCT match_id) AS n
-        FROM owner_teams t WHERE puuid != ''
+        FROM owner_teams t WHERE puuid != '' AND puuid NOT LIKE 'lcu:%'
         GROUP BY puuid HAVING n >= ?
         """,
         (FRIEND_MIN_GAMES,),
