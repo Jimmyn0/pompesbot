@@ -34,13 +34,39 @@ async def test_to_match_info(client_lol):
     assert lcu.match_id(lcu_game(7995738556, _team(), 0)) == "EUW1_7995738556"
 
 
-async def test_kda_baseline_from_shared_games(client_lol):
+async def test_kda_samples_from_client(client_lol):
     for i in range(3):
-        client_lol.add(lcu_game(100 + i, _team(a_deaths=10 + i), created_ms=i))
+        client_lol.add(lcu_game(100 + i, _team(a_deaths=10 + i), created_ms=i * 1000))
     client_lol.add(lcu_game(200, _team(), created_ms=9, queue=450, game_mode="ARAM"))   # autre mode : ignoré
-    assert await lcu.kda_baseline("brut-A", 2400) == {"Kbar": 6.0, "Abar": 8.0, "Dbar": 11.0}
-    assert await lcu.kda_baseline("brut-A", 2400, min_games=4) is None
-    assert await lcu.kda_baseline("pZ", 2400) is None
+    samples = await lcu.kda_samples("brut-A", 2400)
+    assert samples == {f"EUW1_{100 + i}": (6, 10 + i, 8, i + 1200) for i in range(3)}
+    assert await lcu.kda_samples("brut-Z", 2400) == {}
+
+
+def _db_game(match_id, kills, ended_at, mode="ARAM Mayhem"):
+    db.record_game(match_id, mode, ended_at, [{
+        "puuid": "pA", "name": "A", "champion": "Jinx", "kills": kills, "deaths": 10, "assists": 20,
+        "damage": 1, "win": True, "pompes": 10}])
+
+
+async def test_client_baseline_merges_client_and_database(client_lol, monkeypatch):
+    # Client : 2 parties (6 kills). Base : la même partie EUW1_101 + 2 plus anciennes (20 kills).
+    client_lol.add(lcu_game(100, _team(), created_ms=100_000_000))
+    client_lol.add(lcu_game(101, _team(), created_ms=200_000_000))
+    _db_game("EUW1_101", 99, 1)                    # doublon : la version du client l'emporte
+    _db_game("EUW1_50", 20, 50)
+    _db_game("EUW1_51", 20, 51)
+    _db_game("EUW1_52", 99, 52, mode="ARAM")        # autre mode : ignoré
+
+    baseline = await loop._client_kda_baseline("pA", "brut-A", 2400, "ARAM Mayhem")
+    assert baseline["Kbar"] == round((6 + 6 + 20 + 20) / 4, 2)   # 4 parties distinctes
+
+    monkeypatch.setattr(loop, "CLIENT_KDA_SAMPLE_SIZE", 3)     # seulement les 3 plus récentes
+    baseline = await loop._client_kda_baseline("pA", "brut-A", 2400, "ARAM Mayhem")
+    assert baseline["Kbar"] == round((6 + 6 + 20) / 3, 2)     # EUW1_50, la plus ancienne, est exclue
+
+    monkeypatch.setattr(loop, "CLIENT_KDA_MIN_GAMES", 5)
+    assert await loop._client_kda_baseline("pA", "brut-A", 2400, "ARAM Mayhem") is None
 
 
 async def test_client_closed_returns_none(tmp_path):

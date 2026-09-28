@@ -448,6 +448,17 @@ def player_stats(puuid: str) -> dict | None:
     return stats
 
 
+def kda_samples(puuid: str, mode: str) -> dict[str, tuple[int, int, int, float]]:
+    """K/D/A d'un joueur par partie enregistrée dans ce mode : {match_id: (kills, morts, assists, fin)}."""
+    return {
+        r["match_id"]: (r["kills"], r["deaths"], r["assists"], r["ended_at"])
+        for r in conn().execute(
+            f"SELECT match_id, kills, deaths, assists, ended_at FROM games WHERE puuid = ? AND mode = ? AND {REAL_GAMES}",
+            (puuid, mode),
+        )
+    }
+
+
 def worst_game_since(since: float) -> dict | None:
     row = conn().execute(
         f"SELECT * FROM games WHERE ended_at >= ? AND {REAL_GAMES} ORDER BY pompes DESC LIMIT 1", (since,)

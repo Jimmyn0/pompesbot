@@ -87,6 +87,9 @@ FRIEND_MIN_GAMES = 2    # un coéquipier vu au moins N fois dans cette fenêtre 
 
 KDA_CACHE_TTL   = 6 * 3600
 KDA_SAMPLE_SIZE = 20   # 21 requêtes par joueur et par mode (limite clé : 100 req / 2 min)
+# Modes lus depuis le client : moyenne sur les parties du client + celles déjà en base (sans appel API).
+CLIENT_KDA_SAMPLE_SIZE = 50
+CLIENT_KDA_MIN_GAMES   = 3
 
 if not os.path.exists(PLAYERS_FILE):
     print(f"[ERREUR] {PLAYERS_FILE} introuvable. Copiez players.example.json → players.json.")

@@ -18,6 +18,8 @@ from config import (
     ARENA_GAME_MODE,
     ARENA_LABEL,
     CATCHUP_MAX_AGE,
+    CLIENT_KDA_MIN_GAMES,
+    CLIENT_KDA_SAMPLE_SIZE,
     FRIEND_LOOKBACK,
     FRIEND_MIN_GAMES,
     LCU_QUEUES,
@@ -51,6 +53,9 @@ from db import (
     set_meta,
     team_appearances,
     unlock,
+)
+from db import (
+    kda_samples as db_kda_samples,
 )
 from embed_builder import SPECIAL_ICONS, build_embed
 from pushups import calculate_pushups
@@ -339,6 +344,25 @@ def _after_attempt(match_id: str, done: bool) -> None:
         mark_processed(match_id)
 
 
+async def _client_kda_baseline(puuid: str, lcu_puuid: str, queue: int, mode: str) -> dict | None:
+    """KDA moyen d'un joueur dans un mode lu depuis le client : parties du client (~20) et parties
+    déjà enregistrées par le bot, sans doublon, sur les CLIENT_KDA_SAMPLE_SIZE plus récentes.
+
+    La base prolonge l'historique au-delà de ce que garde le client. Aucun appel API.
+    None s'il y a moins de CLIENT_KDA_MIN_GAMES parties (valeur par défaut du mode ensuite).
+    """
+    samples = {**db_kda_samples(puuid, mode), **await lcu.kda_samples(lcu_puuid, queue)}
+    recent = sorted(samples.values(), key=lambda s: s[3], reverse=True)[:CLIENT_KDA_SAMPLE_SIZE]
+    if len(recent) < CLIENT_KDA_MIN_GAMES:
+        return None
+    n = len(recent)
+    return {
+        "Kbar": round(sum(s[0] for s in recent) / n, 2),
+        "Abar": round(sum(s[2] for s in recent) / n, 2),
+        "Dbar": round(sum(s[1] for s in recent) / n, 2),
+    }
+
+
 def _owner_and_teammates(info: dict) -> tuple[dict | None, list[dict]]:
     team_key = _team_key(info)
     owner = next((p for p in info["participants"]
@@ -406,12 +430,13 @@ async def _process_client_game(channel, game_id: int, owner_puuid: str) -> bool:
         return True
     await _close_idle_session(channel, ended_at)
 
-    # KDA de référence : l'API Riot n'a pas l'historique de ce mode, le client si.
+    # KDA de référence : l'API Riot n'a pas l'historique de ce mode ; on le calcule sur le client
+    # et la base (sans appel API).
     queue = info["queueId"]
     for p in info["participants"]:
         puuid = p["puuid"]
         if (puuid == owner_puuid or is_friend(puuid)) and get_cached_kda(puuid, queue) is None:
-            baseline = await lcu.kda_baseline(p["lcuPuuid"], queue)
+            baseline = await _client_kda_baseline(puuid, p["lcuPuuid"], queue, mode)
             if baseline:
                 set_cached_kda(puuid, queue, baseline, p["riotIdGameName"])
 

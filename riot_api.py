@@ -19,6 +19,7 @@ import aiohttp
 from config import (
     DEFAULT_KDA,
     KDA_SAMPLE_SIZE,
+    LCU_QUEUES,
     REGION_V5,
     RIOT_API_KEY,
     RIOT_RATE_LIMITS,
@@ -184,6 +185,10 @@ async def get_player_kda_stats(player_name: str, puuid: str, queue: int, mode: s
     cached = get_cached_kda(puuid, queue)
     if cached:
         return cached
+    if queue in LCU_QUEUES:
+        # Riot n'a pas l'historique de ce mode (calculé depuis le client quand c'est possible) :
+        # inutile de l'interroger, valeur par défaut du mode.
+        return DEFAULT_KDA.get(mode, DEFAULT_KDA["ARAM"]).copy()
 
     log.info(f"Calcul KDA moyen pour {player_name} (queue {queue}, {KDA_SAMPLE_SIZE} parties)…")
     stats = await fetch_kda(puuid, queue)
