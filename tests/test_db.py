@@ -73,11 +73,11 @@ def test_friend_needs_two_games():
 
 
 def test_links_and_player_lookup():
-    _game("EUW1_1", puuid="pB", name="Bard est là")
-    assert db.find_player("BARD EST LÀ") == ("pB", "Bard est là")
+    _game("EUW1_1", puuid="pB", name="Joueur Éclair")
+    assert db.find_player("JOUEUR ÉCLAIR") == ("pB", "Joueur Éclair")
     assert db.find_player("inconnu") is None
-    db.link_discord(42, "pB", "Bard est là")
-    assert db.linked_player(42) == ("pB", "Bard est là")
+    db.link_discord(42, "pB", "Joueur Éclair")
+    assert db.linked_player(42) == ("pB", "Joueur Éclair")
 
 
 def test_player_stats():
