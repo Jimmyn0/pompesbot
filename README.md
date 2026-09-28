@@ -7,7 +7,9 @@ Bot Discord qui traque les parties ARAM / URF / Arena d'un groupe d'amis sur Lea
 Après chaque partie détectée via l'API Riot, le bot poste un embed dans un salon Discord avec :
 - le nombre de pompes calculé pour chaque joueur
 - le KDA de la partie vs la moyenne des 20 dernières
-- une mise en cache JSON du KDA (TTL 6h) pour limiter les appels API
+- une mise en cache du KDA (TTL 6h) pour limiter les appels API
+
+Tout est stocké dans une base SQLite locale (`pompesbot.db`) : historique des parties, sessions, cache.
 
 Les joueurs sont répartis en catégories (`ELT`, `CNF`, `STD`) avec des multiplicateurs différents.
 
@@ -43,7 +45,16 @@ python main.py
 
 ## Joueurs suivis
 
-Renseignez votre Riot ID (`OWNER`) dans `players.json` (non versionné). Vos potes sont détectés automatiquement parmi vos coéquipiers récurrents (au moins 2 parties ensemble sur les 40 dernières), et `!potes` les liste.
+Renseignez votre Riot ID (`OWNER`) dans `players.json` (non versionné). Vos potes sont détectés automatiquement parmi vos coéquipiers récurrents (au moins 2 parties ensemble sur les 40 dernières), et `/potes` les liste.
+
+## Commandes
+
+| Commande | Rôle |
+|---|---|
+| `/session` | Classement des pompes de la session en cours |
+| `/potes` | Potes détectés automatiquement |
+| `/reset_session` | Clôt la session (admin, l'historique est conservé) |
+| `/refresh_kda` | Force le recalcul du KDA moyen d'un joueur (admin) |
 
 ```bash
 cp players.example.json players.json

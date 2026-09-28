@@ -10,17 +10,17 @@ from typing import Optional
 import discord
 from discord.ext import tasks
 
-from cache import (
+from db import (
     _match_order,
-    add_session_pompes,
     get_session_total,
     is_friend,
     is_processed,
+    is_seeded,
     known_friends,
     mark_processed,
     mark_seeded,
+    record_game,
     record_team,
-    seeded_puuids,
 )
 from config import (
     ARENA_GAME_MODE,
@@ -180,7 +180,9 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
         if is_top_dmg:   icons += SPECIAL_ICONS["top_damage"]
 
         results.append({
+            "puuid":         pu,
             "name":          p_name,
+            "champion":      p.get("championName", "—"),
             "champ":         await champion_icon(p.get("championId", 0), p.get("championName", "—")),
             "kills":         k,
             "deaths":        d,
@@ -190,7 +192,7 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
             "win":           win,
             "team":          p.get(team_key),
             "pompes":        nb_pompes,
-            "total_session": get_session_total(p_name) + nb_pompes,
+            "total_session": get_session_total(pu) + nb_pompes,
             "icons":         icons,
         })
 
@@ -200,9 +202,8 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
     embed = build_embed(results, match_id, mode)
     await channel.send(embed=embed)
 
-    # Les totaux ne sont enregistrés qu'une fois l'embed posté (pas de double comptage en cas de retry).
-    for r in results:
-        add_session_pompes(r["name"], r["pompes"])
+    # Les résultats ne sont enregistrés qu'une fois l'embed posté (pas de double comptage en cas de retry).
+    record_game(match_id, mode, end_ms / 1000 if end_ms else time.time(), results)
     return True
 
 
@@ -217,7 +218,7 @@ async def scan(bot, channel_id: int) -> None:
         return
 
     global _warmup_task
-    if owner_puuid not in seeded_puuids:
+    if not is_seeded(owner_puuid):
         # Premier lancement : on apprend les potes et on mémorise l'historique sans le poster.
         mark_seeded(owner_puuid, await _bootstrap_friends(owner_puuid))
     if _warmup_task is None:

@@ -8,3 +8,6 @@ players.json
 match_state.json
 *.tmp
 *.bak
+pompesbot.db
+pompesbot.db-*
+*.migrated

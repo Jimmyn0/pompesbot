@@ -35,11 +35,11 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 |---|---|
 | `config.py` | Constantes, liste de joueurs, catégories avec leurs multiplicateurs |
 | `riot_api.py` | Client Riot async (aiohttp) avec rate limiter et retries : PUUID, historique de matchs, KDA moyen par queue, timeline (first blood) |
-| `cache.py` | Persistance JSON atomique : cache KDA par joueur et par queue, TTL 6h (`stats_cache.json`), totaux de session (`session_totals.json`), parties déjà traitées (`match_state.json`) |
+| `db.py` | Persistance SQLite (`pompesbot.db`, stdlib `sqlite3`) : cache KDA par PUUID et par queue (TTL 6h), historique des parties (`games`), sessions, parties traitées, équipes récentes du propriétaire. Importe les anciens JSON au premier lancement (renommés en `*.migrated`) |
 | `pushups.py` | Formule de calcul des pompes basée sur le ratio KDA réel / KDA moyen des 20 dernières parties |
 | `embed_builder.py` | Construction de l'embed Discord post-partie : 3 champs inline (Joueur / KDA · Dmg / Pompes), alignés par Discord |
 | `champion_icons.py` | Icônes de champion : téléchargées depuis Data Dragon et enregistrées comme emojis d'application à la première apparition (repli : nom du champion) |
-| `commands.py` | Commandes Discord : `!session`, `!potes`, `!reset_session` (admin), `!refresh_kda` (admin) |
+| `commands.py` | Slash commands : `/session`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin, autocomplétion). Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
 
 ## Catégories de joueurs
 
@@ -52,7 +52,7 @@ Les catégories référencent les joueurs par pseudo (`riotIdGameName`, sans le 
 
 ## Joueurs suivis
 
-Seul le compte `OWNER` de `players.json` est interrogé. Ses potes sont détectés automatiquement : tout coéquipier vu au moins `FRIEND_MIN_GAMES` (2) fois sur ses `FRIEND_LOOKBACK` (40) dernières parties. En Arena, seul le duo du propriétaire compte pour la détection (on y recroise souvent des inconnus dans le lobby), mais un pote déjà connu est compté pour les pompes même s'il est dans un autre duo. Les équipes récentes sont stockées dans `match_state.json` (`recent_teams`). Les parties jouées par les potes sans le propriétaire ne sont pas suivies.
+Seul le compte `OWNER` de `players.json` est interrogé. Ses potes sont détectés automatiquement : tout coéquipier vu au moins `FRIEND_MIN_GAMES` (2) fois sur ses `FRIEND_LOOKBACK` (40) dernières parties. En Arena, seul le duo du propriétaire compte pour la détection (on y recroise souvent des inconnus dans le lobby), mais un pote déjà connu est compté pour les pompes même s'il est dans un autre duo. Les équipes récentes sont stockées dans la table `owner_teams`. Les parties jouées par les potes sans le propriétaire ne sont pas suivies.
 
 ## Formule des pompes
 
@@ -73,5 +73,9 @@ total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 
 - Tous les appels Riot passent par `riot_api.client` (async, jamais bloquant) : rate limit 20/1s + 100/2min, retry sur 429/5xx/erreur réseau (pas sur les autres 4xx).
 - La boucle ne laisse remonter aucune exception. Une partie en échec est réessayée jusqu'à 5 fois.
-- `match_state.json` mémorise les parties traitées : au redémarrage, les parties jouées pendant l'arrêt (moins de 12 h) sont postées.
-- Les totaux de session ne sont enregistrés qu'après l'envoi de l'embed.
+- La table `processed_matches` mémorise les parties traitées : au redémarrage, les parties jouées pendant l'arrêt (moins de 12 h) sont postées.
+- Les résultats (`games`) ne sont enregistrés qu'après l'envoi de l'embed.
+
+## Sessions
+
+Une session regroupe les parties jusqu'au prochain `/reset_session`, qui la clôt sans rien effacer : l'historique complet reste dans `games`. La session suivante s'ouvre à la première partie postée.
