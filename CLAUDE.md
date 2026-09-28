@@ -37,9 +37,11 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 | `riot_api.py` | Client Riot async (aiohttp) avec rate limiter et retries : PUUID, historique de matchs, KDA moyen par queue, timeline (first blood) |
 | `db.py` | Persistance SQLite (`pompesbot.db`, stdlib `sqlite3`) : cache KDA par PUUID et par queue (TTL 6h), historique des parties (`games`), sessions, parties traitées, équipes récentes du propriétaire. Importe les anciens JSON au premier lancement (renommés en `*.migrated`) |
 | `pushups.py` | Formule de calcul des pompes basée sur le ratio KDA réel / KDA moyen des 20 dernières parties |
-| `embed_builder.py` | Construction de l'embed Discord post-partie : 3 champs inline (Joueur / KDA · Dmg / Pompes), alignés par Discord |
+| `embed_builder.py` | Construction de l'embed Discord post-partie : 3 champs inline (Joueur / KDA · Dmg / Pompes), alignés par Discord ; `mark_player_done` ajoute ✅ sur la ligne d'un joueur |
+| `views.py` | Bouton « ✅ J'ai fait mes pompes » (DynamicItem, custom_id `pompes:done:<match_id>`) : reste fonctionnel après redémarrage |
+| `reports.py` | Embeds de bilan : fin de session, récap hebdo, `/stats` |
 | `champion_icons.py` | Icônes de champion : téléchargées depuis Data Dragon et enregistrées comme emojis d'application à la première apparition (repli : nom du champion) |
-| `commands.py` | Slash commands : `/session`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin, autocomplétion). Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
+| `commands.py` | Slash commands : `/session`, `/stats`, `/lier`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin), avec autocomplétion des pseudos. Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
 
 ## Catégories de joueurs
 
@@ -67,7 +69,7 @@ total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 
 ## Queues surveillées
 
-`QUEUE_NAMES` dans `config.py` (450 ARAM, 900 URF) définit les modes suivis. L'Arena est reconnue par `gameMode == "CHERRY"` car son queueId change selon les saisons (1700, 1710, 1740, 1750…). Pour un nouveau mode, ajouter aussi un KDA de repli dans `DEFAULT_KDA`.
+`QUEUE_NAMES` dans `config.py` (450 ARAM, 2400 ARAM Mayhem, 900 et 1900 URF) définit les modes suivis. L'Arena est reconnue par `gameMode == "CHERRY"` car son queueId change selon les saisons (1700, 1710, 1740, 1750…). Pour un nouveau mode, ajouter aussi un KDA de repli dans `DEFAULT_KDA`.
 
 ## Fiabilité
 
@@ -78,4 +80,12 @@ total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 
 ## Sessions
 
-Une session regroupe les parties jusqu'au prochain `/reset_session`, qui la clôt sans rien effacer : l'historique complet reste dans `games`. La session suivante s'ouvre à la première partie postée.
+Une session regroupe les parties jusqu'à `SESSION_IDLE_HOURS` (6 h) sans partie : elle est alors clôturée automatiquement et son bilan posté (vérifié à chaque scan, et à chaque partie traitée pour le rattrapage après un arrêt). `/reset_session` la clôt à la main. Rien n'est effacé : l'historique complet reste dans `games`.
+
+## Pompes faites
+
+Chaque joueur lie son compte Discord à son pseudo avec `/lier` (table `discord_links`). Le bouton ✅ sous un embed ne valide que les pompes du joueur lié (`games.done_at`). `/session`, `/stats` et le récap hebdo affichent les pompes faites / dues.
+
+## Récap hebdo
+
+Posté le lundi à 10 h, heure de Paris (`RECAP_WEEKDAY`, `RECAP_HOUR`, `TIMEZONE`), sur les 7 jours précédents. Vérifié toutes les 15 min : s'il n'a pas pu partir à l'heure (bot éteint), il part au démarrage suivant dans la semaine. La semaine du dernier récap est stockée dans `meta` (`last_recap_week`) ; au tout premier lancement, aucun récap rétroactif n'est posté.

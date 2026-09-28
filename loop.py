@@ -5,13 +5,16 @@ Tâche périodique de surveillance des parties.
 import asyncio
 import logging
 import time
+from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import tasks
 
 from db import (
     _match_order,
+    get_meta,
     get_session_total,
     is_friend,
     is_processed,
@@ -21,6 +24,8 @@ from db import (
     mark_seeded,
     record_game,
     record_team,
+    rollover_if_idle,
+    set_meta,
 )
 from config import (
     ARENA_GAME_MODE,
@@ -29,12 +34,18 @@ from config import (
     FRIEND_LOOKBACK,
     OWNER,
     QUEUE_NAMES,
+    RECAP_HOUR,
+    RECAP_WEEKDAY,
     RECENT_MATCHES_CHECKED,
     SCAN_INTERVAL_SECONDS,
+    SESSION_IDLE_HOURS,
+    TIMEZONE,
 )
 from champion_icons import champion_icon
 from embed_builder import SPECIAL_ICONS, build_embed
 from pushups import calculate_pushups
+from reports import session_summary_embed, weekly_recap_embed
+from views import done_view
 from riot_api import (
     get_first_blood,
     get_match_detail,
@@ -118,6 +129,20 @@ async def warm_kda_cache(owner_puuid: str) -> None:
     log.info("Cache KDA prêt")
 
 
+async def _close_idle_session(channel, now: float) -> None:
+    """Clôt la session si elle est inactive depuis SESSION_IDLE_HOURS et poste son bilan."""
+    closed = rollover_if_idle(now, SESSION_IDLE_HOURS * 3600)
+    if closed is None:
+        return
+    log.info(f"Session {closed} clôturée (inactivité)")
+    summary = session_summary_embed(closed)
+    if summary:
+        try:
+            await channel.send(embed=summary)
+        except discord.HTTPException as e:
+            log.error(f"Bilan de session non posté : {e}")
+
+
 async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
     """Traite une partie. Retourne False si elle doit être réessayée plus tard."""
     match_detail = await get_match_detail(match_id)
@@ -136,6 +161,10 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
     if end_ms and time.time() - end_ms / 1000 > CATCHUP_MAX_AGE:
         log.info(f"Match {match_id} ignoré (trop ancien)")
         return True
+    ended_at = end_ms / 1000 if end_ms else time.time()
+
+    # Rattrapage après un arrêt du bot : une longue pause entre deux parties clôt aussi la session.
+    await _close_idle_session(channel, ended_at)
 
     fb_killer_pid, fb_victim_pid = await get_first_blood(match_id)
     participants = info.get("participants", [])
@@ -200,10 +229,10 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
         return True
 
     embed = build_embed(results, match_id, mode)
-    await channel.send(embed=embed)
+    await channel.send(embed=embed, view=done_view(match_id))
 
     # Les résultats ne sont enregistrés qu'une fois l'embed posté (pas de double comptage en cas de retry).
-    record_game(match_id, mode, end_ms / 1000 if end_ms else time.time(), results)
+    record_game(match_id, mode, ended_at, results)
     return True
 
 
@@ -213,6 +242,7 @@ async def scan(bot, channel_id: int) -> None:
         return
 
     log.debug("Scan des parties…")
+    await _close_idle_session(channel, time.time())
     owner_puuid = await get_puuid(OWNER["name"], OWNER["tag"])
     if not owner_puuid:
         return
@@ -261,3 +291,49 @@ def make_league_loop(bot, channel_id: int):
         await bot.wait_until_ready()
 
     return league_loop
+
+
+def recap_moment(now: datetime) -> datetime:
+    """Moment du récap de la semaine en cours (ex. lundi 10 h)."""
+    monday = (now - timedelta(days=now.weekday())).replace(hour=RECAP_HOUR, minute=0, second=0, microsecond=0)
+    return monday + timedelta(days=RECAP_WEEKDAY)
+
+
+async def post_weekly_recap(bot, channel_id: int, now: datetime) -> None:
+    week = now.strftime("%G-W%V")
+    last = get_meta("last_recap_week")
+    if last is None:
+        # Premier lancement : pas de récap rétroactif, le premier sera celui de la semaine prochaine.
+        set_meta("last_recap_week", week)
+        return
+    moment = recap_moment(now)
+    if last == week or now < moment:
+        return
+
+    channel = await _get_channel(bot, channel_id)
+    if not channel:
+        return
+    embed = weekly_recap_embed((moment - timedelta(days=7)).timestamp(), moment)
+    if embed:
+        await channel.send(embed=embed)
+        log.info("Récap hebdo posté")
+    set_meta("last_recap_week", week)
+
+
+def make_recap_loop(bot, channel_id: int):
+    tz = ZoneInfo(TIMEZONE)
+
+    # Vérification toutes les 15 min plutôt qu'à heure fixe : le récap part même si le bot
+    # était éteint à l'heure prévue.
+    @tasks.loop(minutes=15)
+    async def recap_loop() -> None:
+        try:
+            await post_weekly_recap(bot, channel_id, datetime.now(tz))
+        except Exception:
+            log.exception("Erreur pendant le récap hebdo")
+
+    @recap_loop.before_loop
+    async def before_recap_loop() -> None:
+        await bot.wait_until_ready()
+
+    return recap_loop

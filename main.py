@@ -10,8 +10,9 @@ from discord.ext import commands
 import champion_icons
 from commands import setup as setup_commands
 from config import CHANNEL_ID, DISCORD_TOKEN, RIOT_API_KEY
-from loop import make_league_loop
+from loop import make_league_loop, make_recap_loop
 from riot_api import client as riot_client
+from views import DoneButton
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,6 +27,7 @@ class PompesBot(commands.Bot):
         # Slash commands uniquement : l'intent privilégié message_content n'est plus nécessaire.
         super().__init__(command_prefix=commands.when_mentioned, intents=discord.Intents.default())
         self.league_loop = make_league_loop(self, CHANNEL_ID)
+        self.recap_loop  = make_recap_loop(self, CHANNEL_ID)
         self._announced = False
 
     async def setup_hook(self) -> None:
@@ -33,8 +35,10 @@ class PompesBot(commands.Bot):
         await riot_client.start()
         await champion_icons.setup(self)
         setup_commands(self)
+        self.add_dynamic_items(DoneButton)  # boutons des embeds déjà postés, après redémarrage
         await self._sync_commands()
         self.league_loop.start()
+        self.recap_loop.start()
 
     async def _sync_commands(self) -> None:
         """Enregistre les slash commands sur le serveur du salon (disponibles immédiatement)."""
@@ -58,6 +62,7 @@ class PompesBot(commands.Bot):
 
     async def close(self) -> None:
         self.league_loop.cancel()
+        self.recap_loop.cancel()
         await riot_client.close()
         await super().close()
 
