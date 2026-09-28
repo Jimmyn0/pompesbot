@@ -60,9 +60,25 @@ def build_embed(results: list[dict], match_id: str, queue_name: str = "ARAM") ->
     embed.add_field(name="KDA · Dmg",   value="\n".join(stats),   inline=True)
     embed.add_field(name="💪 Pompes",   value="\n".join(pompes),  inline=True)
 
-    legend = "🗡️ First Blood  💀 First Death  💥 Top Dmg"
+    legend = "🗡️ First Blood  💀 First Death  💥 Top Dmg  ✅ Pompes faites"
     if len(results) > 1:
         legend = "★ MVP  ▼ Flop  |  " + legend
     embed.add_field(name="​", value=legend, inline=False)
 
+    return embed
+
+
+def mark_player_done(embed: discord.Embed, player_name: str) -> discord.Embed:
+    """Ajoute ✅ sur la ligne du joueur dans la colonne Pompes d'un embed déjà posté."""
+    embed = embed.copy()
+    fields = embed.fields
+    if len(fields) < 3:
+        return embed
+    players = fields[0].value.splitlines()
+    pompes  = fields[2].value.splitlines()
+    for i, line in enumerate(players):
+        if f"**{player_name[:14]}**" in line and i < len(pompes) and "✅" not in pompes[i]:
+            pompes[i] += " ✅"
+            embed.set_field_at(2, name=fields[2].name, value="\n".join(pompes), inline=True)
+            break
     return embed

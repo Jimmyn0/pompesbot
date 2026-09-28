@@ -13,6 +13,13 @@ Tout est stocké dans une base SQLite locale (`pompesbot.db`) : historique des p
 
 Les joueurs sont répartis en catégories (`ELT`, `CNF`, `STD`) avec des multiplicateurs différents.
 
+## Fonctionnalités
+
+- Bouton **✅ J'ai fait mes pompes** sous chaque partie
+- Sessions clôturées automatiquement après 6 h sans partie, avec bilan
+- Récap hebdo le lundi à 10 h : classement, joueur le plus sage, pire partie, pompes en retard
+- Modes suivis : ARAM, ARAM Mayhem, URF, Arena
+
 ## Prérequis
 
 - Python 3.13+
@@ -51,7 +58,9 @@ Renseignez votre Riot ID (`OWNER`) dans `players.json` (non versionné). Vos pot
 
 | Commande | Rôle |
 |---|---|
-| `/session` | Classement des pompes de la session en cours |
+| `/session` | Classement des pompes de la session en cours (faites / dues) |
+| `/stats [joueur]` | Statistiques d'un joueur : pompes, KDA, champion favori et maudit, pire partie |
+| `/lier <joueur>` | Associe ton compte Discord à ton pseudo LoL (nécessaire pour le bouton ✅) |
 | `/potes` | Potes détectés automatiquement |
 | `/reset_session` | Clôt la session (admin, l'historique est conservé) |
 | `/refresh_kda` | Force le recalcul du KDA moyen d'un joueur (admin) |

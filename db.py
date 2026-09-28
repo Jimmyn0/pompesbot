@@ -58,9 +58,23 @@ CREATE TABLE IF NOT EXISTS games (
     win        INTEGER NOT NULL,
     pompes     INTEGER NOT NULL,
     ended_at   REAL    NOT NULL,
+    done_at    REAL,                -- date à laquelle le joueur a validé ses pompes
     PRIMARY KEY (match_id, puuid)
 );
 CREATE INDEX IF NOT EXISTS games_session ON games(session_id);
+CREATE INDEX IF NOT EXISTS games_puuid   ON games(puuid);
+
+-- Compte Discord -> joueur LoL (via /lier).
+CREATE TABLE IF NOT EXISTS discord_links (
+    discord_id INTEGER PRIMARY KEY,
+    puuid      TEXT NOT NULL,
+    name       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS processed_matches (
     match_id     TEXT PRIMARY KEY,
@@ -96,6 +110,9 @@ def _connect(path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    # Bases créées avant l'ajout de done_at.
+    if "done_at" not in {r["name"] for r in conn.execute("PRAGMA table_info(games)")}:
+        conn.execute("ALTER TABLE games ADD COLUMN done_at REAL")
     return conn
 
 
@@ -149,6 +166,13 @@ def kda_player_names() -> list[str]:
 
 # --- Sessions et parties ---
 
+GAME_COLUMNS = ("match_id, puuid, name, session_id, mode, champion, "
+                "kills, deaths, assists, damage, win, pompes, ended_at")
+
+# Lignes « report » créées par la migration JSON : comptées dans la session, exclues des stats.
+REAL_GAMES = "match_id != 'MIGRATION'"
+
+
 def current_session_id() -> int:
     c = conn()
     row = c.execute("SELECT id FROM sessions WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1").fetchone()
@@ -172,7 +196,7 @@ def record_game(match_id: str, mode: str, ended_at: float, results: Iterable[dic
     with c:
         c.execute("BEGIN")
         c.executemany(
-            "INSERT OR REPLACE INTO games VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT OR REPLACE INTO games ({GAME_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (match_id, r["puuid"], r["name"], session_id, mode, r["champion"],
                  r["kills"], r["deaths"], r["assists"], r["damage"], int(r["win"]), r["pompes"], ended_at)
@@ -181,23 +205,167 @@ def record_game(match_id: str, mode: str, ended_at: float, results: Iterable[dic
         )
 
 
-def session_leaderboard() -> list[tuple[str, int, int]]:
-    """[(pseudo le plus récent, total de pompes, nb de parties)] de la session en cours, du plus chargé au moins chargé."""
+def leaderboard(where: str, params: tuple) -> list[dict]:
+    """Classement par joueur, du plus chargé au moins chargé.
+
+    Chaque ligne : name (pseudo le plus récent), total, n (parties), done (pompes validées), avg.
+    """
     rows = conn().execute(
-        """
+        f"""
         SELECT (SELECT g2.name FROM games g2 WHERE g2.puuid = g.puuid ORDER BY g2.ended_at DESC LIMIT 1) AS name,
-               SUM(pompes) AS total, COUNT(*) AS n
-        FROM games g WHERE session_id = ?
+               SUM(pompes) AS total, COUNT(*) AS n,
+               COALESCE(SUM(CASE WHEN done_at IS NOT NULL THEN pompes END), 0) AS done,
+               ROUND(AVG(pompes), 1) AS avg
+        FROM games g WHERE {where}
         GROUP BY puuid ORDER BY total DESC
         """,
-        (current_session_id(),),
+        params,
     ).fetchall()
-    return [(r["name"], r["total"], r["n"]) for r in rows]
+    return [dict(r) for r in rows]
+
+
+def session_leaderboard(session_id: Optional[int] = None) -> list[dict]:
+    return leaderboard("session_id = ?", (session_id or current_session_id(),))
+
+
+def session_bounds(session_id: int) -> tuple[Optional[float], Optional[float], int]:
+    """(fin de la première partie, fin de la dernière, nb de parties) d'une session."""
+    row = conn().execute(
+        f"SELECT MIN(ended_at), MAX(ended_at), COUNT(DISTINCT match_id) FROM games "
+        f"WHERE session_id = ? AND {REAL_GAMES}",
+        (session_id,),
+    ).fetchone()
+    return row[0], row[1], row[2]
 
 
 def reset_session() -> None:
     """Clôt la session en cours (l'historique est conservé) ; la suivante démarre à la prochaine partie."""
     conn().execute("UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL", (time.time(),))
+
+
+def rollover_if_idle(ended_at: float, idle_seconds: float) -> Optional[int]:
+    """Clôt la session en cours si sa dernière partie date de plus de `idle_seconds` avant `ended_at`.
+
+    Retourne l'id de la session clôturée (pour poster son bilan), sinon None.
+    """
+    sid = current_session_id()
+    last = conn().execute(
+        f"SELECT MAX(ended_at) FROM games WHERE session_id = ? AND {REAL_GAMES}", (sid,)
+    ).fetchone()[0]
+    if last is None or ended_at - last < idle_seconds:
+        return None
+    conn().execute("UPDATE sessions SET ended_at = ? WHERE id = ?", (last, sid))
+    return sid
+
+
+# --- Pompes faites ---
+
+def mark_done(match_id: str, puuid: str) -> tuple[str, int, str]:
+    """Valide les pompes d'un joueur sur une partie.
+
+    Retourne (statut, pompes, pseudo affiché dans l'embed), statut ∈ ok | deja | absent.
+    """
+    row = conn().execute(
+        "SELECT pompes, done_at, name FROM games WHERE match_id = ? AND puuid = ?", (match_id, puuid)
+    ).fetchone()
+    if row is None:
+        return "absent", 0, ""
+    if row["done_at"] is not None:
+        return "deja", row["pompes"], row["name"]
+    conn().execute(
+        "UPDATE games SET done_at = ? WHERE match_id = ? AND puuid = ?", (time.time(), match_id, puuid)
+    )
+    return "ok", row["pompes"], row["name"]
+
+
+# --- Joueurs et comptes Discord ---
+
+def known_players() -> dict[str, str]:
+    """Pseudo le plus récent -> puuid, pour tous les joueurs connus (cache KDA, potes, parties)."""
+    players: dict[str, str] = {}
+    for sql in (
+        "SELECT puuid, name FROM kda_cache",
+        "SELECT puuid, name FROM owner_teams WHERE puuid != '' ORDER BY match_order",
+        f"SELECT puuid, name FROM games WHERE {REAL_GAMES} ORDER BY ended_at",
+    ):
+        for r in conn().execute(sql):
+            players = {n: p for n, p in players.items() if p != r["puuid"]}
+            players[r["name"]] = r["puuid"]
+    return players
+
+
+def find_player(name: str) -> Optional[tuple[str, str]]:
+    """(puuid, pseudo) d'un joueur connu ; recherche insensible à la casse."""
+    for n, puuid in known_players().items():
+        if n.lower() == name.lower():
+            return puuid, n
+    return None
+
+
+def link_discord(discord_id: int, puuid: str, name: str) -> None:
+    conn().execute("INSERT OR REPLACE INTO discord_links VALUES (?, ?, ?)", (discord_id, puuid, name))
+
+
+def linked_player(discord_id: int) -> Optional[tuple[str, str]]:
+    row = conn().execute("SELECT puuid, name FROM discord_links WHERE discord_id = ?", (discord_id,)).fetchone()
+    return (row["puuid"], row["name"]) if row else None
+
+
+# --- Statistiques ---
+
+def player_stats(puuid: str) -> Optional[dict]:
+    c = conn()
+    base = f"FROM games WHERE puuid = ? AND {REAL_GAMES}"
+    row = c.execute(
+        f"""SELECT COUNT(*) AS n, SUM(pompes) AS total, ROUND(AVG(pompes), 1) AS avg, SUM(win) AS wins,
+                   COALESCE(SUM(CASE WHEN done_at IS NOT NULL THEN pompes END), 0) AS done,
+                   SUM(kills) AS k, SUM(deaths) AS d, SUM(assists) AS a {base}""",
+        (puuid,),
+    ).fetchone()
+    if not row["n"]:
+        return None
+    stats = dict(row)
+    stats["name"]  = c.execute(f"SELECT name {base} ORDER BY ended_at DESC LIMIT 1", (puuid,)).fetchone()[0]
+    stats["worst"] = dict(c.execute(f"SELECT * {base} ORDER BY pompes DESC, ended_at DESC LIMIT 1", (puuid,)).fetchone())
+    stats["best"]  = dict(c.execute(f"SELECT * {base} ORDER BY pompes ASC, ended_at DESC LIMIT 1", (puuid,)).fetchone())
+    fav = c.execute(
+        f"SELECT champion, COUNT(*) AS n {base} GROUP BY champion ORDER BY n DESC LIMIT 1", (puuid,)
+    ).fetchone()
+    stats["favorite"] = (fav["champion"], fav["n"])
+    cursed = c.execute(
+        f"""SELECT champion, ROUND(AVG(pompes), 1) AS avg, COUNT(*) AS n {base}
+            GROUP BY champion HAVING n >= 2 ORDER BY avg DESC LIMIT 1""",
+        (puuid,),
+    ).fetchone()
+    stats["cursed"] = (cursed["champion"], cursed["avg"], cursed["n"]) if cursed else None
+    stats["modes"] = {
+        r["mode"]: r["n"] for r in c.execute(f"SELECT mode, COUNT(*) AS n {base} GROUP BY mode", (puuid,))
+    }
+    return stats
+
+
+def worst_game_since(since: float) -> Optional[dict]:
+    row = conn().execute(
+        f"SELECT * FROM games WHERE ended_at >= ? AND {REAL_GAMES} ORDER BY pompes DESC LIMIT 1", (since,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def count_games_since(since: float) -> int:
+    return conn().execute(
+        f"SELECT COUNT(DISTINCT match_id) FROM games WHERE ended_at >= ? AND {REAL_GAMES}", (since,)
+    ).fetchone()[0]
+
+
+# --- Méta ---
+
+def get_meta(key: str) -> Optional[str]:
+    row = conn().execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    return row[0] if row else None
+
+
+def set_meta(key: str, value: str) -> None:
+    conn().execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
 
 
 # --- État de détection des parties ---
@@ -300,7 +468,8 @@ def _migrate_json() -> None:
             # Les totaux JSON n'ont pas de PUUID : une ligne « report » par joueur dans la session en cours.
             sid = c.execute("INSERT INTO sessions (started_at) VALUES (?)", (time.time(),)).lastrowid
             for name, total in session.items():
-                c.execute("INSERT INTO games VALUES ('MIGRATION', ?, ?, ?, 'report', '—', 0, 0, 0, 0, 0, ?, ?)",
+                c.execute(f"INSERT INTO games ({GAME_COLUMNS}) "
+                          "VALUES ('MIGRATION', ?, ?, ?, 'report', '—', 0, 0, 0, 0, 0, ?, ?)",
                           (f"legacy:{name}", name, sid, total, time.time()))
 
         state = state or {}

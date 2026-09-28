@@ -23,8 +23,10 @@ REGION_V5 = "europe"
 REGION_V4 = "euw1"
 
 QUEUE_NAMES = {
-    450: "ARAM",
-    900: "URF",
+    450:  "ARAM",
+    2400: "ARAM Mayhem",
+    900:  "URF",
+    1900: "URF",
 }
 # L'Arena change de queueId selon les saisons (1700, 1710, 1740, 1750…) :
 # on la reconnaît par son gameMode plutôt que par sa queue.
@@ -44,6 +46,12 @@ PLAYERS_FILE  = os.path.join(BASE_DIR, "players.json")
 CACHE_FILE    = os.path.join(BASE_DIR, "stats_cache.json")
 SESSION_FILE  = os.path.join(BASE_DIR, "session_totals.json")
 STATE_FILE    = os.path.join(BASE_DIR, "match_state.json")
+
+SESSION_IDLE_HOURS = 6    # sans partie pendant ce délai, la session est clôturée et son bilan posté
+
+TIMEZONE     = "Europe/Paris"
+RECAP_WEEKDAY = 0         # récap hebdo le lundi (0 = lundi)…
+RECAP_HOUR    = 10        # …à 10 h, heure de Paris
 
 FRIEND_LOOKBACK  = 40   # parties récentes du propriétaire prises en compte
 FRIEND_MIN_GAMES = 2    # un coéquipier vu au moins N fois dans cette fenêtre est un pote
@@ -71,6 +79,7 @@ if DEFAULT_CATEGORY not in PLAYER_CATEGORIES:
 # KDA moyen de repli par mode, si l'historique du joueur est indisponible.
 DEFAULT_KDA = {
     "ARAM":  {"Kbar": 11.0, "Abar": 25.0, "Dbar": 11.0},
+    "ARAM Mayhem": {"Kbar": 13.0, "Abar": 27.0, "Dbar": 12.0},  # estimation
     "URF":   {"Kbar": 12.0, "Abar": 15.0, "Dbar": 9.0},
     "Arena": {"Kbar": 7.0,  "Abar": 5.0,  "Dbar": 6.0},  # estimation grossière
 }
