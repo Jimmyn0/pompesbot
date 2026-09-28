@@ -11,12 +11,11 @@ import asyncio
 import logging
 import time
 from collections import deque
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import quote
 
 import aiohttp
 
-from db import get_cached_kda, set_cached_kda
 from config import (
     DEFAULT_KDA,
     KDA_SAMPLE_SIZE,
@@ -24,10 +23,12 @@ from config import (
     RIOT_API_KEY,
     RIOT_RATE_LIMITS,
 )
+from db import get_cached_kda, set_cached_kda
 
 log = logging.getLogger("PompesBot")
 
-MAX_RETRIES = 4
+MAX_RETRIES  = 4
+BACKOFF_BASE = 2   # pause de BACKOFF_BASE ** essai secondes entre deux essais
 
 
 class RateLimiter:
@@ -61,7 +62,7 @@ class RiotClient:
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
         self.limiter = RateLimiter(RIOT_RATE_LIMITS)
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.session: aiohttp.ClientSession | None = None
 
     async def start(self) -> None:
         if self.session is None or self.session.closed:
@@ -74,7 +75,7 @@ class RiotClient:
         if self.session and not self.session.closed:
             await self.session.close()
 
-    async def get(self, path: str, params: Optional[dict] = None) -> Optional[Any]:
+    async def get(self, path: str, params: dict | None = None) -> Any | None:
         """GET https://{REGION_V5}.api.riotgames.com{path} — None si échec ou 404."""
         if self.session is None:
             await self.start()
@@ -100,9 +101,9 @@ class RiotClient:
                         log.error(f"Riot API {resp.status} sur {path}")
                         return None
                     log.warning(f"Riot API {resp.status} sur {path} (essai {attempt})")
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            except (TimeoutError, aiohttp.ClientError) as e:
                 log.warning(f"Erreur réseau Riot sur {path} (essai {attempt}) : {e!r}")
-            await asyncio.sleep(2 ** attempt)
+            await asyncio.sleep(BACKOFF_BASE ** attempt)
 
         log.error(f"Abandon après {MAX_RETRIES} essais : {path}")
         return None
@@ -113,7 +114,7 @@ client = RiotClient(RIOT_API_KEY)
 puuid_cache: dict[str, str] = {}
 
 
-async def get_puuid(game_name: str, tag_line: str) -> Optional[str]:
+async def get_puuid(game_name: str, tag_line: str) -> str | None:
     key = f"{game_name}#{tag_line}".lower()
     if key in puuid_cache:
         return puuid_cache[key]
@@ -127,19 +128,19 @@ async def get_puuid(game_name: str, tag_line: str) -> Optional[str]:
 
 
 async def get_recent_match_ids(
-    puuid: str, count: int = 5, queue: Optional[int] = None
-) -> Optional[list[str]]:
+    puuid: str, count: int = 5, queue: int | None = None
+) -> list[str] | None:
     params: dict[str, int] = {"count": count}
     if queue is not None:
         params["queue"] = queue
     return await client.get(f"/lol/match/v5/matches/by-puuid/{puuid}/ids", params)
 
 
-async def get_match_detail(match_id: str) -> Optional[dict]:
+async def get_match_detail(match_id: str) -> dict | None:
     return await client.get(f"/lol/match/v5/matches/{match_id}")
 
 
-async def fetch_kda(puuid: str, queue: int, count: int = KDA_SAMPLE_SIZE) -> Optional[dict]:
+async def fetch_kda(puuid: str, queue: int, count: int = KDA_SAMPLE_SIZE) -> dict | None:
     match_ids = await get_recent_match_ids(puuid, count=count, queue=queue)
     if not match_ids:
         return None
@@ -185,7 +186,7 @@ async def get_player_kda_stats(player_name: str, puuid: str, queue: int, mode: s
     return DEFAULT_KDA.get(mode, DEFAULT_KDA["ARAM"]).copy()
 
 
-async def get_first_blood(match_id: str) -> tuple[Optional[int], Optional[int]]:
+async def get_first_blood(match_id: str) -> tuple[int | None, int | None]:
     data = await client.get(f"/lol/match/v5/matches/{match_id}/timeline")
     if not data:
         return None, None

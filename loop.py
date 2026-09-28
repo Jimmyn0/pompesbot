@@ -6,12 +6,26 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 import discord
 from discord.ext import tasks
 
+from champion_icons import champion_icon
+from config import (
+    ARENA_GAME_MODE,
+    ARENA_LABEL,
+    CATCHUP_MAX_AGE,
+    FRIEND_LOOKBACK,
+    OWNER,
+    QUEUE_NAMES,
+    RECAP_HOUR,
+    RECAP_WEEKDAY,
+    RECENT_MATCHES_CHECKED,
+    SCAN_INTERVAL_SECONDS,
+    SESSION_IDLE_HOURS,
+    TIMEZONE,
+)
 from db import (
     _match_order,
     get_meta,
@@ -27,25 +41,9 @@ from db import (
     rollover_if_idle,
     set_meta,
 )
-from config import (
-    ARENA_GAME_MODE,
-    ARENA_LABEL,
-    CATCHUP_MAX_AGE,
-    FRIEND_LOOKBACK,
-    OWNER,
-    QUEUE_NAMES,
-    RECAP_HOUR,
-    RECAP_WEEKDAY,
-    RECENT_MATCHES_CHECKED,
-    SCAN_INTERVAL_SECONDS,
-    SESSION_IDLE_HOURS,
-    TIMEZONE,
-)
-from champion_icons import champion_icon
 from embed_builder import SPECIAL_ICONS, build_embed
 from pushups import calculate_pushups
 from reports import session_summary_embed, weekly_recap_embed
-from views import done_view
 from riot_api import (
     get_first_blood,
     get_match_detail,
@@ -53,22 +51,23 @@ from riot_api import (
     get_puuid,
     get_recent_match_ids,
 )
+from views import done_view
 
 log = logging.getLogger("PompesBot")
 
 MAX_ATTEMPTS = 5
 _failures: dict[str, int] = {}
-_warmup_task: Optional[asyncio.Task] = None
+_warmup_task: asyncio.Task | None = None
 
 
-def match_mode(info: dict) -> Optional[str]:
+def match_mode(info: dict) -> str | None:
     """Libellé du mode suivi (ARAM, URF, Arena), ou None si la partie est hors scope."""
     if info.get("gameMode") == ARENA_GAME_MODE:
         return ARENA_LABEL
     return QUEUE_NAMES.get(info.get("queueId"))
 
 
-async def _get_channel(bot, channel_id: int) -> Optional[discord.abc.Messageable]:
+async def _get_channel(bot, channel_id: int) -> discord.abc.Messageable | None:
     channel = bot.get_channel(channel_id)
     if channel is None:
         try:
@@ -110,7 +109,7 @@ async def _bootstrap_friends(owner_puuid: str) -> list[str]:
     """Premier lancement : lit les dernières parties du propriétaire pour connaître ses potes."""
     ids = await get_recent_match_ids(owner_puuid, count=FRIEND_LOOKBACK) or []
     details = await asyncio.gather(*(get_match_detail(mid) for mid in ids))
-    for mid, detail in zip(ids, details):
+    for mid, detail in zip(ids, details, strict=True):
         if detail:
             _record_owner_team(mid, detail.get("info", {}), owner_puuid)
     friends = known_friends()

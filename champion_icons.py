@@ -8,7 +8,6 @@ En cas d'échec, le nom du champion est affiché à la place.
 """
 
 import logging
-from typing import Optional
 
 import aiohttp
 import discord
@@ -17,10 +16,10 @@ log = logging.getLogger("PompesBot")
 
 DDRAGON = "https://ddragon.leagueoflegends.com"
 
-_bot: Optional[discord.Client] = None
+_bot: discord.Client | None = None
 _emojis: dict[str, discord.Emoji] = {}
 _ddragon_ids: dict[int, str] = {}     # championId -> id Data Dragon (ex. 62 -> "MonkeyKing")
-_version: Optional[str] = None
+_version: str | None = None
 
 
 async def setup(bot: discord.Client) -> None:

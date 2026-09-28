@@ -7,7 +7,6 @@ Copiez players.example.json → players.json et remplissez votre Riot ID.
 import json
 import os
 import sys
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -17,7 +16,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 DISCORD_TOKEN: str        = os.getenv("DISCORD_TOKEN", "")
 RIOT_API_KEY: str         = os.getenv("RIOT_API_KEY", "")
-CHANNEL_ID: Optional[int] = int(os.getenv("DISCORD_CHANNEL_ID", 0)) or None
+CHANNEL_ID: int | None    = int(os.getenv("DISCORD_CHANNEL_ID", 0)) or None
 
 REGION_V5 = "europe"
 REGION_V4 = "euw1"
@@ -40,12 +39,16 @@ SCAN_INTERVAL_SECONDS = 30
 RECENT_MATCHES_CHECKED = 5            # parties récentes vérifiées par joueur à chaque scan
 CATCHUP_MAX_AGE        = 12 * 3600    # au redémarrage, ignore les parties plus anciennes
 
-DB_FILE       = os.path.join(BASE_DIR, "pompesbot.db")
-PLAYERS_FILE  = os.path.join(BASE_DIR, "players.json")
+# Dossier des données (players.json, base SQLite) : le dossier du bot par défaut,
+# /data dans l'image Docker, un dossier temporaire dans les tests.
+DATA_DIR = os.getenv("POMPESBOT_DATA_DIR", BASE_DIR)
+
+DB_FILE       = os.path.join(DATA_DIR, "pompesbot.db")
+PLAYERS_FILE  = os.path.join(DATA_DIR, "players.json")
 # Anciens fichiers JSON, importés dans la base au premier lancement (cf. db._migrate_json)
-CACHE_FILE    = os.path.join(BASE_DIR, "stats_cache.json")
-SESSION_FILE  = os.path.join(BASE_DIR, "session_totals.json")
-STATE_FILE    = os.path.join(BASE_DIR, "match_state.json")
+CACHE_FILE    = os.path.join(DATA_DIR, "stats_cache.json")
+SESSION_FILE  = os.path.join(DATA_DIR, "session_totals.json")
+STATE_FILE    = os.path.join(DATA_DIR, "match_state.json")
 
 SESSION_IDLE_HOURS = 6    # sans partie pendant ce délai, la session est clôturée et son bilan posté
 
@@ -60,17 +63,17 @@ KDA_CACHE_TTL   = 6 * 3600
 KDA_SAMPLE_SIZE = 20   # 21 requêtes par joueur et par mode (limite clé : 100 req / 2 min)
 
 if not os.path.exists(PLAYERS_FILE):
-    print("[ERREUR] players.json introuvable. Copiez players.example.json → players.json.")
+    print(f"[ERREUR] {PLAYERS_FILE} introuvable. Copiez players.example.json → players.json.")
     sys.exit(1)
 
-with open(PLAYERS_FILE, "r", encoding="utf-8") as _f:
+with open(PLAYERS_FILE, encoding="utf-8") as _f:
     _players_data = json.load(_f)
 
 # Seul le compte du propriétaire (celui qui lance le bot) est suivi ; ses potes sont
 # détectés automatiquement parmi ses coéquipiers (cf. FRIEND_MIN_GAMES).
 OWNER: dict             = _players_data["OWNER"]
 PLAYER_CATEGORIES: dict = _players_data["PLAYER_CATEGORIES"]
-DEFAULT_CATEGORY              = "STD"
+DEFAULT_CATEGORY        = "STD"
 
 if DEFAULT_CATEGORY not in PLAYER_CATEGORIES:
     print(f"[ERREUR] players.json : la catégorie {DEFAULT_CATEGORY} est obligatoire.")

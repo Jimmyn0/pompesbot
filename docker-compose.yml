@@ -1,0 +1,7 @@
+services:
+  pompesbot:
+    build: .
+    restart: unless-stopped
+    env_file: .env          # DISCORD_TOKEN, RIOT_API_KEY, DISCORD_CHANNEL_ID
+    volumes:
+      - ./data:/data        # players.json + pompesbot.db

@@ -2,7 +2,6 @@
 Slash commands : /session, /stats, /lier, /potes, /reset_session (admin), /refresh_kda (admin).
 """
 
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -67,7 +66,7 @@ def setup(bot: commands.Bot) -> None:
     @tree.command(name="stats", description="Statistiques de pompes d'un joueur")
     @app_commands.describe(joueur="Pseudo Riot (par défaut : le tien, via /lier)")
     @app_commands.autocomplete(joueur=player_autocomplete)
-    async def cmd_stats(interaction: discord.Interaction, joueur: Optional[str] = None) -> None:
+    async def cmd_stats(interaction: discord.Interaction, joueur: str | None = None) -> None:
         if joueur:
             found = find_player(joueur)
         else:
