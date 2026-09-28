@@ -21,7 +21,7 @@ Les joueurs sont répartis en catégories (`ELT`, `CNF`, `STD`) avec des multipl
 - 9 succès à débloquer (`/succes`) et records de la saison annoncés dans l'embed
 - Sessions clôturées automatiquement après 6 h sans partie, avec bilan
 - Récap hebdo le lundi à 10 h : classement, joueur le plus sage, pire partie, pompes en retard
-- Modes suivis : ARAM, ARAM Mayhem, URF, Arena
+- Modes suivis : ARAM, ARAM du chaos (Mayhem), URF, Arena
 
 ## Prérequis
 
@@ -79,6 +79,10 @@ docker compose up -d --build
 ```
 
 Le conteneur redémarre automatiquement. `players.json` et la base SQLite sont dans `./data` (volume `/data`), les secrets dans `.env`.
+
+## ARAM du chaos (Mayhem)
+
+Riot n'expose pas ces parties dans son API publique. Le bot les lit dans l'historique du **client League ouvert sur le même PC** : elles ne sont vues que si le bot tourne sur le PC où vous jouez, avec le client ouvert (les parties de moins de 12 h sont rattrapées à sa réouverture). Si le client n'est pas installé dans `C:\` ou `D:\Riot Games\League of Legends`, indiquez son lockfile dans `.env` : `LCU_LOCKFILE=...\League of Legends\lockfile`.
 
 ## Joueurs suivis
 

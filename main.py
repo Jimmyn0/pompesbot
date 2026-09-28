@@ -8,6 +8,7 @@ import discord
 from discord.ext import commands
 
 import champion_icons
+import lcu
 from commands import setup as setup_commands
 from config import CHANNEL_ID, DATA_DIR, DEV_MODE, DISCORD_TOKEN, RIOT_API_KEY
 from loop import make_league_loop, make_recap_loop
@@ -69,6 +70,7 @@ class PompesBot(commands.Bot):
         self.league_loop.cancel()
         self.recap_loop.cancel()
         await riot_client.close()
+        await lcu.client.close()
         await super().close()
 
 

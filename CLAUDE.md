@@ -61,6 +61,7 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 | `views.py` | Boutons sous l'embed (DynamicItem, fonctionnels après redémarrage) : un par joueur avec l'icône de son champion (`pompes:detail:<match_id>:<participantId>`, détail du calcul en message éphémère) et « ✅ J'ai fait mes pompes » (`pompes:done:<match_id>`) |
 | `achievements.py` | Succès (une fois par joueur, table `achievements`) et records de la saison (année civile) |
 | `reports.py` | Embeds de bilan : fin de session, récap hebdo, `/stats`, `/succes`, détail du calcul des pompes |
+| `lcu.py` | Lecture de l'historique du client League du PC (API locale, lockfile) pour les parties que Riot n'expose pas (ARAM Mayhem) ; conversion au format match-v5 |
 | `dev.py` | Mode test : `/test_partie` et génération de fausses parties |
 | `champion_icons.py` | Icônes de champion : téléchargées depuis Data Dragon et enregistrées comme emojis d'application à la première apparition (repli : nom du champion) |
 | `commands.py` | Slash commands : `/session`, `/stats`, `/succes`, `/lier`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin), avec autocomplétion des pseudos. Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
@@ -95,6 +96,17 @@ total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 ## Queues surveillées
 
 `QUEUE_NAMES` dans `config.py` (450 ARAM, 2400 ARAM Mayhem, 900 et 1900 URF) définit les modes suivis. L'Arena est reconnue par `gameMode == "CHERRY"` car son queueId change selon les saisons (1700, 1710, 1740, 1750…). Pour un nouveau mode, ajouter aussi un KDA de repli dans `DEFAULT_KDA`.
+
+## ARAM Mayhem (ARAM du chaos) et client League
+
+L'API publique de Riot n'expose pas les parties d'ARAM Mayhem (queue 2400) : absentes de l'historique et refusées par ID (403). `lcu.py` les lit dans l'historique du client League ouvert sur le PC du bot (lockfile dans `LCU_LOCKFILES`, `LCU_LOCKFILE` dans le `.env` pour un autre dossier), et `loop._scan_client_games` les fait passer par `post_match` à chaque scan.
+
+- Seules les queues de `LCU_QUEUES` sont lues depuis le client ; les autres restent à l'API Riot.
+- Le client utilise des PUUID bruts, l'API Riot des PUUID chiffrés propres à la clé : `loop._client_match_info` retrouve les seconds via le Riot ID de chaque joueur, et le compte connecté est reconnu par Riot ID (`_is_owner`).
+- Première lecture du client (`meta.lcu_seeded`) : l'historique sert à détecter les potes, rien n'est posté.
+- KDA de référence : moyenne des parties de ce mode dans l'historique du client (`lcu.kda_baseline`).
+- Client fermé, autre compte connecté ou bot hébergé ailleurs : rien n'est lu, sans erreur. Les parties de moins de 12 h sont rattrapées à la réouverture.
+- Les tests n'accèdent jamais au vrai client (`LCU_LOCKFILE` pointé vers un fichier absent dans `conftest.py`) ; faux client : `FakeClientLoL`.
 
 ## Fiabilité
 
