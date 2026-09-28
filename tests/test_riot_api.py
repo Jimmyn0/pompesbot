@@ -105,8 +105,8 @@ async def test_riot_id_is_url_encoded(monkeypatch):
 
     monkeypatch.setattr(riot_api.client, "get", fake_get)
     riot_api.puuid_cache.clear()
-    assert await riot_api.get_puuid("Bard est là", "EUW") == "P"
-    assert seen == ["/riot/account/v1/accounts/by-riot-id/Bard%20est%20l%C3%A0/EUW"]
+    assert await riot_api.get_puuid("Joueur Éclair", "EUW") == "P"
+    assert seen == ["/riot/account/v1/accounts/by-riot-id/Joueur%20%C3%89clair/EUW"]
 
 
 async def test_no_riot_call_for_client_only_modes(monkeypatch):

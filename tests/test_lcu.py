@@ -189,7 +189,7 @@ async def test_puuid_is_asked_to_riot_once(monkeypatch):
 
     monkeypatch.setattr(riot_api.client, "get", fake_get)
     riot_api.puuid_cache.clear()
-    assert await riot_api.get_puuid("Bard est là", "EUW") == "P-Bard%20est%20l%C3%A0"
+    assert await riot_api.get_puuid("Joueur Éclair", "EUW") == "P-Joueur%20%C3%89clair"
     riot_api.puuid_cache.clear()                                 # redémarrage : mémoire vide…
-    assert await riot_api.get_puuid("BARD EST LÀ", "euw") == "P-Bard%20est%20l%C3%A0"   # …mais la base s'en souvient
+    assert await riot_api.get_puuid("JOUEUR ÉCLAIR", "euw") == "P-Joueur%20%C3%89clair"   # …mais la base s'en souvient
     assert len(calls) == 1
