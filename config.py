@@ -38,10 +38,12 @@ SCAN_INTERVAL_SECONDS = 30
 RECENT_MATCHES_CHECKED = 5            # parties récentes vérifiées par joueur à chaque scan
 CATCHUP_MAX_AGE        = 12 * 3600    # au redémarrage, ignore les parties plus anciennes
 
+DB_FILE       = os.path.join(BASE_DIR, "pompesbot.db")
+PLAYERS_FILE  = os.path.join(BASE_DIR, "players.json")
+# Anciens fichiers JSON, importés dans la base au premier lancement (cf. db._migrate_json)
 CACHE_FILE    = os.path.join(BASE_DIR, "stats_cache.json")
 SESSION_FILE  = os.path.join(BASE_DIR, "session_totals.json")
 STATE_FILE    = os.path.join(BASE_DIR, "match_state.json")
-PLAYERS_FILE  = os.path.join(BASE_DIR, "players.json")
 
 FRIEND_LOOKBACK  = 40   # parties récentes du propriétaire prises en compte
 FRIEND_MIN_GAMES = 2    # un coéquipier vu au moins N fois dans cette fenêtre est un pote

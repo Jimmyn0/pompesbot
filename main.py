@@ -23,9 +23,8 @@ log = logging.getLogger("PompesBot")
 
 class PompesBot(commands.Bot):
     def __init__(self) -> None:
-        intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(command_prefix="!", intents=intents)
+        # Slash commands uniquement : l'intent privilégié message_content n'est plus nécessaire.
+        super().__init__(command_prefix=commands.when_mentioned, intents=discord.Intents.default())
         self.league_loop = make_league_loop(self, CHANNEL_ID)
         self._announced = False
 
@@ -34,7 +33,19 @@ class PompesBot(commands.Bot):
         await riot_client.start()
         await champion_icons.setup(self)
         setup_commands(self)
+        await self._sync_commands()
         self.league_loop.start()
+
+    async def _sync_commands(self) -> None:
+        """Enregistre les slash commands sur le serveur du salon (disponibles immédiatement)."""
+        try:
+            channel = await self.fetch_channel(CHANNEL_ID)
+            guild = discord.Object(id=channel.guild.id)
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+            log.info(f"{len(synced)} slash command(s) synchronisée(s) sur le serveur {channel.guild.id}")
+        except (discord.HTTPException, AttributeError) as e:
+            log.error(f"Synchronisation des slash commands impossible : {e!r}")
 
     async def on_ready(self) -> None:
         log.info(f"Bot connecté : {self.user}")

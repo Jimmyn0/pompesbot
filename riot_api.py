@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 import aiohttp
 
-from cache import get_cached_kda, set_cached_kda
+from db import get_cached_kda, set_cached_kda
 from config import (
     DEFAULT_KDA,
     KDA_SAMPLE_SIZE,
