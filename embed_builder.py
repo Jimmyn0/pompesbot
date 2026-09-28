@@ -40,7 +40,7 @@ def _format_bonus_malus(icons: str) -> str:
     return "  ".join(parts)
 
 
-def build_embed(results: list[dict], match_id: str) -> discord.Embed:
+def build_embed(results: list[dict], match_id: str, queue_name: str = "ARAM") -> discord.Embed:
     """Scoreboard style post-game LoL. Colonnes : Joueur | Champion | KDA | Dmg | Pompes | ±"""
     wins         = sum(1 for r in results if r["win"])
     color        = WIN_COLOR if wins >= len(results) / 2 else LOSE_COLOR
@@ -48,7 +48,7 @@ def build_embed(results: list[dict], match_id: str) -> discord.Embed:
     result_icon  = "🏆" if wins >= len(results) / 2 else "💀"
 
     embed = discord.Embed(
-        title=f"Fin de partie ARAM — {result_icon} {result_label}",
+        title=f"Fin de partie {queue_name} — {result_icon} {result_label}",
         color=color,
     )
     embed.set_footer(text=f"Match {match_id}")

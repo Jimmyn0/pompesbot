@@ -5,3 +5,5 @@ __pycache__/
 stats_cache.json
 session_totals.json
 players.json
+match_state.json
+*.tmp

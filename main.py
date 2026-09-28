@@ -2,14 +2,17 @@
 PompesBot v2.0 — point d'entrée.
 """
 
+import asyncio
 import logging
 
 import discord
 from discord.ext import commands
 
 from commands import setup as setup_commands
-from config import CHANNEL_ID, DISCORD_TOKEN, RIOT_API_KEY
+from config import CHANNEL_ID, DISCORD_TOKEN, PLAYERS_TO_TRACK, RIOT_API_KEY
 from loop import make_league_loop
+from riot_api import client as riot_client
+from riot_api import get_player_kda_stats, get_puuid
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,25 +21,51 @@ logging.basicConfig(
 )
 log = logging.getLogger("PompesBot")
 
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
 
-setup_commands(bot)
-league_loop = make_league_loop(bot, CHANNEL_ID)
+async def warm_kda_cache() -> None:
+    """Précalcule le KDA ARAM de chaque joueur en arrière-plan, pour ne pas retarder le premier embed."""
+    for p in PLAYERS_TO_TRACK:
+        try:
+            puuid = await get_puuid(p["name"], p["tag"])
+            if puuid:
+                await get_player_kda_stats(p["name"], puuid, 450)
+        except Exception:
+            log.exception(f"Préchauffage KDA échoué pour {p['name']}")
+    log.info("Cache KDA prêt")
 
 
-@bot.event
-async def on_ready() -> None:
-    log.info(f"Bot connecté : {bot.user}")
-    channel = bot.get_channel(CHANNEL_ID) if CHANNEL_ID else None
-    if channel:
-        await channel.send("🤖 **PompesBot v2.0** prêt ! Session démarrée. 💪")
-    league_loop.start()
+class PompesBot(commands.Bot):
+    def __init__(self) -> None:
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix="!", intents=intents)
+        self.league_loop = make_league_loop(self, CHANNEL_ID)
+        self._announced = False
+
+    async def setup_hook(self) -> None:
+        # Appelé une seule fois (contrairement à on_ready, rappelé à chaque reconnexion).
+        await riot_client.start()
+        setup_commands(self)
+        self.league_loop.start()
+        self._warmup = asyncio.create_task(warm_kda_cache())
+
+    async def on_ready(self) -> None:
+        log.info(f"Bot connecté : {self.user}")
+        if self._announced:
+            return
+        self._announced = True
+        channel = self.get_channel(CHANNEL_ID)
+        if channel:
+            await channel.send("🤖 **PompesBot v2.0** prêt ! Session démarrée. 💪")
+
+    async def close(self) -> None:
+        self.league_loop.cancel()
+        await riot_client.close()
+        await super().close()
 
 
 if __name__ == "__main__":
     if not all([DISCORD_TOKEN, RIOT_API_KEY, CHANNEL_ID]):
         log.error("Variables .env manquantes (DISCORD_TOKEN, RIOT_API_KEY, DISCORD_CHANNEL_ID)")
     else:
-        bot.run(DISCORD_TOKEN)
+        PompesBot().run(DISCORD_TOKEN, log_handler=None)

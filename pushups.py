@@ -5,17 +5,16 @@ Calcul du nombre de pompes par joueur après une partie.
 import logging
 from math import floor
 
-from config import PLAYER_CATEGORIES
-from riot_api import get_player_kda_stats
+from config import DEFAULT_CATEGORY, PLAYER_CATEGORIES
 
 log = logging.getLogger("PompesBot")
 
 
 def get_player_category(player_name: str) -> tuple[str, dict]:
     for label, cfg in PLAYER_CATEGORIES.items():
-        if player_name in cfg["players"] or label == "STD":
+        if label != DEFAULT_CATEGORY and player_name in cfg.get("players", []):
             return label, cfg
-    return "STD", PLAYER_CATEGORIES["STD"]
+    return DEFAULT_CATEGORY, PLAYER_CATEGORIES[DEFAULT_CATEGORY]
 
 
 def calculate_pushups(
@@ -23,13 +22,13 @@ def calculate_pushups(
     deaths:      int,
     assists:     int,
     player_name: str,
-    puuid:       str,
+    stats:       dict,
     win:         bool,
     fb_kill:     bool = False,
     fb_victim:   bool = False,
     top_damage:  bool = False,
 ) -> tuple[int, str]:
-    """Retourne (nb_pompes, categorie_label)."""
+    """Retourne (nb_pompes, categorie_label). `stats` = KDA moyen {Kbar, Abar, Dbar}."""
     cat_label, cfg = get_player_category(player_name)
     BASE       = cfg["base"]
     MIN_POMPES = cfg["min_pompes"]
@@ -37,7 +36,6 @@ def calculate_pushups(
     MULT_KILL  = cfg["mult_kill"]
     BETA       = 0.5
 
-    stats = get_player_kda_stats(player_name, puuid)
     Kbar, Abar, Dbar = stats["Kbar"], stats["Abar"], max(stats["Dbar"], 1)
 
     score_reel  = kills  + BETA * assists

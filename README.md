@@ -1,6 +1,6 @@
 # PompesBot 🏋️
 
-Bot Discord qui traque les parties ARAM / URF d'un groupe d'amis sur League of Legends et calcule des **pompes** à faire selon les performances (kills, morts, KDA moyen).
+Bot Discord qui traque les parties ARAM / URF / Arena d'un groupe d'amis sur League of Legends et calcule des **pompes** à faire selon les performances (kills, morts, KDA moyen).
 
 ## Fonctionnement
 
@@ -38,9 +38,13 @@ DISCORD_CHANNEL_ID=id_du_salon
 ## Lancement
 
 ```bash
-python app2_2.py
+python main.py
 ```
 
 ## Joueurs suivis
 
-Le bot suit 9 joueurs EUW configurés dans `app2_2.py` (`PLAYERS_TO_TRACK`).
+Les joueurs sont configurés dans `players.json` (non versionné) :
+
+```bash
+cp players.example.json players.json
+```

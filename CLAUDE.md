@@ -34,8 +34,8 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 | Module | Rôle |
 |---|---|
 | `config.py` | Constantes, liste de joueurs, catégories avec leurs multiplicateurs |
-| `riot_api.py` | Couche Riot API : PUUID, historique de matchs, KDA moyen, timeline (first blood) |
-| `cache.py` | Persistance JSON sur disque : cache KDA avec TTL 6h (`stats_cache.json`) + totaux de session (`session_totals.json`) |
+| `riot_api.py` | Client Riot async (aiohttp) avec rate limiter et retries : PUUID, historique de matchs, KDA moyen par queue, timeline (first blood) |
+| `cache.py` | Persistance JSON atomique : cache KDA par joueur et par queue, TTL 6h (`stats_cache.json`), totaux de session (`session_totals.json`), parties déjà traitées (`match_state.json`) |
 | `pushups.py` | Formule de calcul des pompes basée sur le ratio KDA réel / KDA moyen des 50 dernières parties |
 | `embed_builder.py` | Construction de l'embed Discord post-partie (scoreboard style) |
 | `commands.py` | Commandes Discord : `!session`, `!reset_session` (admin), `!refresh_kda` (admin) |
@@ -54,7 +54,7 @@ Pour ajouter un joueur : l'ajouter dans `PLAYERS_TO_TRACK` (nom + tag Riot) et o
 ```
 total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 ```
-- `ratio_mort = deaths / Dbar` (Dbar = moyenne des morts sur 50 parties ARAM)
+- `ratio_mort = deaths / Dbar` (Dbar = moyenne des morts sur les 50 dernières parties du même mode)
 - `ratio_off = (kills + 0.5×assists) / max(Kbar + 0.5×Abar, 1)`
 - Défaite : +3 pompes
 - First blood victim : +1 / First blood kill : -1 / Top damage : -1
@@ -62,4 +62,11 @@ total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 
 ## Queues surveillées
 
-`TARGET_QUEUE_IDS = [450, 900, 1700]` → ARAM, URF, Arena. Modifier cette liste dans `config.py` pour ajouter/retirer des modes.
+`QUEUE_NAMES` dans `config.py` (450 ARAM, 900 URF) définit les modes suivis. L'Arena est reconnue par `gameMode == "CHERRY"` car son queueId change selon les saisons (1700, 1710, 1740, 1750…). Pour un nouveau mode, ajouter aussi un KDA de repli dans `DEFAULT_KDA`.
+
+## Fiabilité
+
+- Tous les appels Riot passent par `riot_api.client` (async, jamais bloquant) : rate limit 20/1s + 100/2min, retry sur 429/5xx/erreur réseau (pas sur les autres 4xx).
+- La boucle ne laisse remonter aucune exception. Une partie en échec est réessayée jusqu'à 5 fois.
+- `match_state.json` mémorise les parties traitées : au redémarrage, les parties jouées pendant l'arrêt (moins de 12 h) sont postées.
+- Les totaux de session ne sont enregistrés qu'après l'envoi de l'embed.
