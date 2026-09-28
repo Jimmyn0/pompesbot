@@ -128,14 +128,28 @@ async def test_other_queues_left_to_riot(seeded, now):
     assert channel.sent == [] and not db.is_processed("EUW1_3")              # l'API Riot s'en charge
 
 
-async def test_only_owner_team_is_resolved(riot, client_lol, now):
+def _with_newcomer(name):
+    """Même partie, mais « Random » est remplacé par un inconnu vu pour la première fois."""
+    return [(f"p{name}", name, *row[2:]) if row[1] == "Random" else row for row in _team()]
+
+
+async def test_only_owner_and_friends_are_asked_to_riot(riot, client_lol, now):
     client_lol.add(lcu_game(1, _team(), created_ms=int((now - 3 * 86400) * 1000)))
-    client_lol.add(lcu_game(2, _team(), created_ms=int((now - 1500) * 1000)))
+    client_lol.add(lcu_game(2, _team(), created_ms=int((now - 2 * 86400) * 1000)))
+    client_lol.add(lcu_game(3, _with_newcomer("Once"), created_ms=int((now - 86400) * 1000)))
     channel = FakeChannel()
     await loop.scan(FakeBot(channel), 1)                      # 1re lecture : historique
     asked = set(riot.puuid_calls)
-    assert {"A", "B", "C", "D", "Random"} <= asked               # l'équipe du propriétaire
+    assert {"A", "B", "C", "D", "Random"} <= asked               # toi + joueurs vus 2 fois
+    assert "Once" not in asked                                   # vu une seule fois : aucun appel
     assert not asked & {"Adv1", "Adv2", "Adv3", "Adv4", "Adv5"}  # jamais les adversaires
+
+    # Nouvelle partie : « Once » revient (2e fois) -> converti et reconnu comme pote.
+    client_lol.add(lcu_game(4, _with_newcomer("Once"), created_ms=int((now - 1500) * 1000)))
+    riot.puuid_calls.clear()
+    await loop.scan(FakeBot(channel), 1)
+    assert "Once" in riot.puuid_calls and db.is_friend("pOnce")
+    assert "Adv1" not in riot.puuid_calls
 
 
 async def test_puuid_is_asked_to_riot_once(monkeypatch):

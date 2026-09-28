@@ -518,6 +518,22 @@ def mark_seeded(puuid: str, match_ids: list[str]) -> None:
 
 # --- Détection des potes ---
 
+def team_appearances(puuid: str) -> int:
+    """Nombre de parties récentes où ce joueur était dans l'équipe du propriétaire."""
+    return conn().execute(
+        "SELECT COUNT(DISTINCT match_id) FROM owner_teams WHERE puuid = ?", (puuid,)
+    ).fetchone()[0]
+
+
+def rename_team_member(old_puuid: str, new_puuid: str) -> None:
+    """Remplace un identifiant provisoire (« lcu:… ») par le PUUID de l'API dans la fenêtre des équipes."""
+    c = conn()
+    with c:
+        c.execute("BEGIN")
+        c.execute("UPDATE OR IGNORE owner_teams SET puuid = ? WHERE puuid = ?", (new_puuid, old_puuid))
+        c.execute("DELETE FROM owner_teams WHERE puuid = ?", (old_puuid,))
+
+
 def record_team(match_id: str, teammates: dict[str, str]) -> None:
     """Mémorise les coéquipiers du propriétaire sur une partie (fenêtre glissante)."""
     c = conn()
@@ -559,7 +575,7 @@ def known_friends() -> dict[str, tuple[str, int]]:
         SELECT puuid,
                (SELECT t2.name FROM owner_teams t2 WHERE t2.puuid = t.puuid ORDER BY t2.match_order DESC LIMIT 1) AS name,
                COUNT(DISTINCT match_id) AS n
-        FROM owner_teams t WHERE puuid != ''
+        FROM owner_teams t WHERE puuid != '' AND puuid NOT LIKE 'lcu:%'
         GROUP BY puuid HAVING n >= ?
         """,
         (FRIEND_MIN_GAMES,),

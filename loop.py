@@ -19,6 +19,7 @@ from config import (
     ARENA_LABEL,
     CATCHUP_MAX_AGE,
     FRIEND_LOOKBACK,
+    FRIEND_MIN_GAMES,
     LCU_QUEUES,
     OWNER,
     QUEUE_NAMES,
@@ -33,6 +34,7 @@ from db import (
     _match_order,
     current_streak,
     get_cached_kda,
+    get_cached_puuid,
     get_meta,
     get_session_total,
     is_friend,
@@ -43,9 +45,11 @@ from db import (
     mark_seeded,
     record_game,
     record_team,
+    rename_team_member,
     rollover_if_idle,
     set_cached_kda,
     set_meta,
+    team_appearances,
     unlock,
 )
 from embed_builder import SPECIAL_ICONS, build_embed
@@ -335,24 +339,47 @@ def _after_attempt(match_id: str, done: bool) -> None:
         mark_processed(match_id)
 
 
-async def _client_match_info(detail: dict) -> dict:
-    """Partie du client au format match-v5, avec les PUUID de l'API Riot.
-
-    Le client utilise des PUUID bruts ; l'API Riot (et donc la base du bot) des PUUID chiffrés
-    propres à la clé API. On retrouve ces derniers à partir du Riot ID, mais seulement pour
-    l'équipe du propriétaire (ses potes y sont forcément) : les adversaires gardent un
-    identifiant « lcu:… », sans appel à Riot. Chaque Riot ID n'est demandé qu'une fois (cf. get_puuid).
-    """
-    info = await lcu.to_match_info(detail)
+def _owner_and_teammates(info: dict) -> tuple[dict | None, list[dict]]:
     team_key = _team_key(info)
     owner = next((p for p in info["participants"]
                   if _is_owner((p["riotIdGameName"], p["riotIdTagline"]))), None)
+    if owner is None:
+        return None, []
+    return owner, [p for p in info["participants"] if p is not owner and p.get(team_key) == owner.get(team_key)]
+
+
+async def _client_match_info(detail: dict, seen: dict[str, int] | None = None) -> dict:
+    """Partie du client au format match-v5, avec les PUUID de l'API Riot pour toi et tes potes.
+
+    Le client utilise des PUUID bruts ; l'API Riot (et donc la base du bot) des PUUID chiffrés
+    propres à la clé API, qu'on obtient à partir du Riot ID (un appel à Riot par joueur).
+    Pour ne demander que toi et tes potes, chaque joueur garde d'abord un identifiant
+    provisoire « lcu:… » : il n'est converti que s'il est déjà connu, ou s'il atteint
+    FRIEND_MIN_GAMES parties dans ton équipe (compté gratuitement avec l'identifiant du client).
+    `seen` : décompte déjà fait sur tout l'historique (1re lecture) ; sinon, la base + cette partie.
+    """
+    info = await lcu.to_match_info(detail)
     for p in info["participants"]:
-        api_puuid = None
-        same_team = owner is not None and p.get(team_key) == owner.get(team_key)
-        if same_team and p["riotIdGameName"] and p["riotIdTagline"]:
-            api_puuid = await get_puuid(p["riotIdGameName"], p["riotIdTagline"])
-        p["puuid"] = api_puuid or f"lcu:{p['lcuPuuid']}"
+        p["puuid"] = f"lcu:{p['lcuPuuid']}"
+    owner, teammates = _owner_and_teammates(info)
+    if owner is None:
+        return info
+
+    owner["puuid"] = await get_puuid(owner["riotIdGameName"], owner["riotIdTagline"]) or owner["puuid"]
+    for p in teammates:
+        riot_id = f"{p['riotIdGameName']}#{p['riotIdTagline']}"
+        known = get_cached_puuid(riot_id)                   # déjà demandé à Riot : gratuit
+        if known:
+            p["puuid"] = known
+            continue
+        provisional = p["puuid"]
+        appearances = seen.get(provisional, 0) if seen is not None else team_appearances(provisional) + 1
+        if appearances < FRIEND_MIN_GAMES or not p["riotIdTagline"]:
+            continue                                         # inconnu : aucun appel
+        api_puuid = await get_puuid(p["riotIdGameName"], p["riotIdTagline"])
+        if api_puuid:
+            rename_team_member(provisional, api_puuid)
+            p["puuid"] = api_puuid
     return info
 
 
@@ -399,10 +426,15 @@ async def _scan_client_games(channel, owner_puuid: str) -> None:
 
     if get_meta("lcu_seeded") is None:
         # Première lecture du client : on apprend les potes sur son historique, sans rien poster.
-        for game in games:
-            detail = await lcu.game_detail(game["gameId"])
-            if detail:
-                _record_owner_team(lcu.match_id(detail), await _client_match_info(detail), owner_puuid)
+        # Décompte d'abord (sans appel à Riot) pour ne convertir que les joueurs vus assez souvent.
+        details = [d for d in [await lcu.game_detail(g["gameId"]) for g in games] if d]
+        seen: dict[str, int] = {}
+        for detail in details:
+            _, teammates = _owner_and_teammates(await lcu.to_match_info(detail))
+            for p in teammates:
+                seen[f"lcu:{p['lcuPuuid']}"] = seen.get(f"lcu:{p['lcuPuuid']}", 0) + 1
+        for detail in details:
+            _record_owner_team(lcu.match_id(detail), await _client_match_info(detail, seen), owner_puuid)
         mark_processed(*(lcu.match_id(g) for g in games))
         set_meta("lcu_seeded", "1")
         friends = known_friends()

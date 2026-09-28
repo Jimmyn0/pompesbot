@@ -102,7 +102,7 @@ total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 L'API publique de Riot n'expose pas les parties d'ARAM Mayhem (queue 2400) : absentes de l'historique et refusées par ID (403). `lcu.py` les lit dans l'historique du client League ouvert sur le PC du bot (lockfile dans `LCU_LOCKFILES`, `LCU_LOCKFILE` dans le `.env` pour un autre dossier), et `loop._scan_client_games` les fait passer par `post_match` à chaque scan.
 
 - Seules les queues de `LCU_QUEUES` sont lues depuis le client ; les autres restent à l'API Riot.
-- Le client utilise des PUUID bruts, l'API Riot des PUUID chiffrés propres à la clé : `loop._client_match_info` retrouve les seconds via le Riot ID de chaque joueur, et le compte connecté est reconnu par Riot ID (`_is_owner`).
+- Le client utilise des PUUID bruts, l'API Riot des PUUID chiffrés propres à la clé (un appel par Riot ID, mémorisé dans la table `riot_ids`). Pour ne demander que le propriétaire et ses potes, `loop._client_match_info` donne d'abord à chacun un identifiant provisoire `lcu:…` et ne le convertit que si le joueur est déjà connu ou atteint `FRIEND_MIN_GAMES` parties dans l'équipe du propriétaire (décompte local ; `rename_team_member` fusionne ensuite). Le compte connecté est reconnu par Riot ID (`_is_owner`).
 - Première lecture du client (`meta.lcu_seeded`) : l'historique sert à détecter les potes, rien n'est posté.
 - KDA de référence : moyenne des parties de ce mode dans l'historique du client (`lcu.kda_baseline`).
 - Client fermé, autre compte connecté ou bot hébergé ailleurs : rien n'est lu, sans erreur. Les parties de moins de 12 h sont rattrapées à la réouverture.
