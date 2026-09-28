@@ -126,3 +126,30 @@ async def test_other_queues_left_to_riot(seeded, now):
     client_lol.add(lcu_game(3, _team(), created_ms=int((now - 1500) * 1000), queue=450, game_mode="ARAM"))
     await loop.scan(FakeBot(channel), 1)
     assert channel.sent == [] and not db.is_processed("EUW1_3")              # l'API Riot s'en charge
+
+
+async def test_only_owner_team_is_resolved(riot, client_lol, now):
+    client_lol.add(lcu_game(1, _team(), created_ms=int((now - 3 * 86400) * 1000)))
+    client_lol.add(lcu_game(2, _team(), created_ms=int((now - 1500) * 1000)))
+    channel = FakeChannel()
+    await loop.scan(FakeBot(channel), 1)                      # 1re lecture : historique
+    asked = set(riot.puuid_calls)
+    assert {"A", "B", "C", "D", "Random"} <= asked               # l'équipe du propriétaire
+    assert not asked & {"Adv1", "Adv2", "Adv3", "Adv4", "Adv5"}  # jamais les adversaires
+
+
+async def test_puuid_is_asked_to_riot_once(monkeypatch):
+    import riot_api
+
+    calls = []
+
+    async def fake_get(path, params=None):
+        calls.append(path)
+        return {"puuid": "P-" + path.rsplit("/", 2)[-2]}
+
+    monkeypatch.setattr(riot_api.client, "get", fake_get)
+    riot_api.puuid_cache.clear()
+    assert await riot_api.get_puuid("Bard est là", "EUW") == "P-Bard%20est%20l%C3%A0"
+    riot_api.puuid_cache.clear()                                 # redémarrage : mémoire vide…
+    assert await riot_api.get_puuid("BARD EST LÀ", "euw") == "P-Bard%20est%20l%C3%A0"   # …mais la base s'en souvient
+    assert len(calls) == 1

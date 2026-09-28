@@ -339,12 +339,18 @@ async def _client_match_info(detail: dict) -> dict:
     """Partie du client au format match-v5, avec les PUUID de l'API Riot.
 
     Le client utilise des PUUID bruts ; l'API Riot (et donc la base du bot) des PUUID chiffrés
-    propres à la clé API. On retrouve ces derniers à partir du Riot ID de chaque joueur.
+    propres à la clé API. On retrouve ces derniers à partir du Riot ID, mais seulement pour
+    l'équipe du propriétaire (ses potes y sont forcément) : les adversaires gardent un
+    identifiant « lcu:… », sans appel à Riot. Chaque Riot ID n'est demandé qu'une fois (cf. get_puuid).
     """
     info = await lcu.to_match_info(detail)
+    team_key = _team_key(info)
+    owner = next((p for p in info["participants"]
+                  if _is_owner((p["riotIdGameName"], p["riotIdTagline"]))), None)
     for p in info["participants"]:
         api_puuid = None
-        if p["riotIdGameName"] and p["riotIdTagline"]:
+        same_team = owner is not None and p.get(team_key) == owner.get(team_key)
+        if same_team and p["riotIdGameName"] and p["riotIdTagline"]:
             api_puuid = await get_puuid(p["riotIdGameName"], p["riotIdTagline"])
         p["puuid"] = api_puuid or f"lcu:{p['lcuPuuid']}"
     return info

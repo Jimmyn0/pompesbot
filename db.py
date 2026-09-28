@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS player_levels (
     updated_at REAL NOT NULL
 );
 
+-- Riot ID (« pseudo#tag » en minuscules) -> PUUID de l'API : chaque joueur n'est demandé à Riot qu'une fois.
+CREATE TABLE IF NOT EXISTS riot_ids (
+    riot_id TEXT PRIMARY KEY,
+    puuid   TEXT NOT NULL
+);
+
 -- Succès débloqués (une seule fois par joueur).
 CREATE TABLE IF NOT EXISTS achievements (
     puuid       TEXT NOT NULL,
@@ -453,6 +459,17 @@ def count_games_since(since: float) -> int:
     return conn().execute(
         f"SELECT COUNT(DISTINCT match_id) FROM games WHERE ended_at >= ? AND {REAL_GAMES}", (since,)
     ).fetchone()[0]
+
+
+# --- Riot ID -> PUUID ---
+
+def get_cached_puuid(riot_id: str) -> str | None:
+    row = conn().execute("SELECT puuid FROM riot_ids WHERE riot_id = ?", (riot_id.lower(),)).fetchone()
+    return row[0] if row else None
+
+
+def set_cached_puuid(riot_id: str, puuid: str) -> None:
+    conn().execute("INSERT OR REPLACE INTO riot_ids VALUES (?, ?)", (riot_id.lower(), puuid))
 
 
 # --- Niveaux de difficulté ---

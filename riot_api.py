@@ -23,7 +23,7 @@ from config import (
     RIOT_API_KEY,
     RIOT_RATE_LIMITS,
 )
-from db import get_cached_kda, set_cached_kda
+from db import get_cached_kda, get_cached_puuid, set_cached_kda, set_cached_puuid
 
 log = logging.getLogger("PompesBot")
 
@@ -119,14 +119,20 @@ puuid_cache: dict[str, str] = {}
 
 
 async def get_puuid(game_name: str, tag_line: str) -> str | None:
+    """PUUID (API) d'un Riot ID : mémoire, puis base, puis Riot (une seule fois par joueur)."""
     key = f"{game_name}#{tag_line}".lower()
     if key in puuid_cache:
         return puuid_cache[key]
+    cached = get_cached_puuid(key)
+    if cached:
+        puuid_cache[key] = cached
+        return cached
     data = await client.get(f"/riot/account/v1/accounts/by-riot-id/{quote(game_name, safe='')}/{quote(tag_line, safe='')}")
     if not data or "puuid" not in data:
         log.error(f"PUUID introuvable pour {game_name}#{tag_line}")
         return None
     puuid_cache[key] = data["puuid"]
+    set_cached_puuid(key, data["puuid"])
     log.info(f"PUUID récupéré pour {game_name}")
     return data["puuid"]
 
