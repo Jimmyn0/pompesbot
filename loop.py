@@ -168,7 +168,26 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
     # Rattrapage après un arrêt du bot : une longue pause entre deux parties clôt aussi la session.
     await _close_idle_session(channel, ended_at)
 
-    fb_killer_pid, fb_victim_pid = await get_first_blood(match_id)
+    first_blood = await get_first_blood(match_id)
+    return await post_match(channel, match_id, info, mode, ended_at, owner_puuid, first_blood)
+
+
+async def post_match(
+    channel,
+    match_id: str,
+    info: dict,
+    mode: str,
+    ended_at: float,
+    owner_puuid: str,
+    first_blood: tuple[int | None, int | None],
+) -> bool:
+    """Calcule les pompes d'une partie, poste l'embed et enregistre les résultats.
+
+    Séparé de _process_match (récupération côté Riot) pour que /test_partie puisse y faire
+    passer une partie générée.
+    """
+    fb_killer_pid, fb_victim_pid = first_blood
+    queue        = info.get("queueId")
     participants = info.get("participants", [])
 
     team_key = _team_key(info)

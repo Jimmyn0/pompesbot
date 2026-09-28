@@ -36,6 +36,10 @@ ruff check .
 - `ruff` : pas de `ruff format`, le code aligne volontairement ses colonnes (voir `pyproject.toml`).
 - CI : `.github/workflows/ci.yml` (lint + tests sur Python 3.13 et 3.14, build de l'image Docker).
 
+## Mode test
+
+`test-bot.ps1` copie les données dans `data/test` (sauvegarde SQLite), puis lance le bot avec `POMPESBOT_DEV=1`, `POMPESBOT_DATA_DIR=data/test` et le salon `DEV_CHANNEL_ID` du `.env`. `config.DEV_MODE` n'est vrai que si les données ne sont pas dans le dossier du bot. En mode test, `dev.py` ajoute `/test_partie`, qui génère une partie (`dev.fake_match`, IDs `TEST_…`) et la passe à `loop.post_match`, le même traitement que les vraies parties (sans toucher à la détection des potes).
+
 ## Données et Docker
 
 `POMPESBOT_DATA_DIR` (par défaut le dossier du bot) contient `players.json` et `pompesbot.db`. L'image Docker utilise `/data` (volume `./data` dans `docker-compose.yml`).
@@ -57,6 +61,7 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 | `views.py` | Boutons sous l'embed (DynamicItem, fonctionnels après redémarrage) : un par joueur avec l'icône de son champion (`pompes:detail:<match_id>:<participantId>`, détail du calcul en message éphémère) et « ✅ J'ai fait mes pompes » (`pompes:done:<match_id>`) |
 | `achievements.py` | Succès (une fois par joueur, table `achievements`) et records de la saison (année civile) |
 | `reports.py` | Embeds de bilan : fin de session, récap hebdo, `/stats`, `/succes`, détail du calcul des pompes |
+| `dev.py` | Mode test : `/test_partie` et génération de fausses parties |
 | `champion_icons.py` | Icônes de champion : téléchargées depuis Data Dragon et enregistrées comme emojis d'application à la première apparition (repli : nom du champion) |
 | `commands.py` | Slash commands : `/session`, `/stats`, `/succes`, `/lier`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin), avec autocomplétion des pseudos. Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
 

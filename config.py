@@ -43,6 +43,17 @@ CATCHUP_MAX_AGE        = 12 * 3600    # au redémarrage, ignore les parties plus
 # /data dans l'image Docker, un dossier temporaire dans les tests.
 DATA_DIR = os.getenv("POMPESBOT_DATA_DIR", BASE_DIR)
 
+# Mode test (POMPESBOT_DEV=1) : active /test_partie, qui génère de fausses parties, et poste dans
+# DEV_CHANNEL_ID s'il est défini. Refusé sur les données de production (dossier du bot).
+def dev_mode_enabled(flag: str | None, data_dir: str, base_dir: str) -> bool:
+    same_dir = os.path.normcase(os.path.abspath(data_dir)) == os.path.normcase(os.path.abspath(base_dir))
+    return flag == "1" and not same_dir
+
+
+DEV_MODE = dev_mode_enabled(os.getenv("POMPESBOT_DEV"), DATA_DIR, BASE_DIR)
+if DEV_MODE and os.getenv("DEV_CHANNEL_ID"):
+    CHANNEL_ID = int(os.environ["DEV_CHANNEL_ID"])
+
 DB_FILE       = os.path.join(DATA_DIR, "pompesbot.db")
 PLAYERS_FILE  = os.path.join(DATA_DIR, "players.json")
 # Anciens fichiers JSON, importés dans la base au premier lancement (cf. db._migrate_json)

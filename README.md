@@ -53,6 +53,23 @@ DISCORD_CHANNEL_ID=id_du_salon
 python main.py
 ```
 
+## Tester le bot
+
+**Tests automatiques** (quelques secondes, sans Discord ni Riot) : voir « Développement » plus bas.
+
+**Mode test** : le vrai bot, sur une copie des données, avec `/test_partie` pour générer de fausses fins de partie.
+
+1. Ajoutez l'ID du salon de test dans `.env` : `DEV_CHANNEL_ID=...`
+2. Lancez :
+   ```powershell
+   .	est-bot.ps1          # réutilise la copie data	est si elle existe
+   .	est-bot.ps1 -Reset   # repart d'une copie fraîche des vraies données
+   ```
+   Si PowerShell bloque le script : `powershell -ExecutionPolicy Bypass -File .	est-bot.ps1`
+3. Dans Discord : `/test_partie mode:Arena resultat:Défaite sans_mort:True`. La partie générée (vous et vos potes) passe par le même traitement qu'une vraie : embed, boutons, séries, succès, records.
+
+Les fausses parties ne touchent jamais les vraies données : `/test_partie` n'existe que si `POMPESBOT_DEV=1` **et** que les données sont ailleurs que dans le dossier du bot.
+
 ## Hébergement avec Docker
 
 ```bash
