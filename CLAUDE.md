@@ -64,16 +64,16 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 | `lcu.py` | Lecture de l'historique du client League du PC (API locale, lockfile) pour les parties que Riot n'expose pas (ARAM Mayhem) ; conversion au format match-v5 |
 | `dev.py` | Mode test : `/test_partie` et génération de fausses parties |
 | `champion_icons.py` | Icônes de champion : téléchargées depuis Data Dragon et enregistrées comme emojis d'application à la première apparition (repli : nom du champion) |
-| `commands.py` | Slash commands : `/session`, `/stats`, `/succes`, `/lier`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin), avec autocomplétion des pseudos. Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
+| `commands.py` | Slash commands : `/session`, `/stats`, `/succes`, `/lier`, `/difficulte`, `/potes`, `/reset_session` (admin), `/refresh_kda` (admin), avec autocomplétion des pseudos. Synchronisées au démarrage sur le serveur du salon `DISCORD_CHANNEL_ID` |
 
-## Catégories de joueurs
+## Niveaux de difficulté
 
-Trois catégories dans `players.json` avec des multiplicateurs différents pour les morts/kills :
-- `ELT` — base 30 pompes, multiplicateurs élevés
-- `CNF` — base 23 pompes
-- `STD` (tous les autres) — base 15 pompes
+Trois niveaux, définis dans `players.json` (`PLAYER_CATEGORIES`) et affichés sous les noms de `config.LEVEL_LABELS` (ou `label` dans `players.json`) :
+- `STD` « Échauffement » — base 15, minimum 5 (niveau par défaut)
+- `CNF` « Athlète » — base 23, minimum 10
+- `ELT` « Bodybuilder » — base 30, minimum 15
 
-Les catégories référencent les joueurs par pseudo (`riotIdGameName`, sans le tag).
+Chaque joueur choisit son niveau avec `/difficulte` (ou à `/lier`), à tout moment ; un admin peut changer celui des autres. Le niveau est stocké par PUUID (table `player_levels`) et s'applique aux parties suivantes. `pushups.get_player_category` : niveau choisi, sinon liste `players` de `players.json` (par pseudo, enregistré pour le PUUID à la première partie, donc insensible aux changements de pseudo ensuite), sinon `STD`.
 
 ## Joueurs suivis
 

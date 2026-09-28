@@ -105,6 +105,17 @@ if DEFAULT_CATEGORY not in PLAYER_CATEGORIES:
     print(f"[ERREUR] players.json : la catégorie {DEFAULT_CATEGORY} est obligatoire.")
     sys.exit(1)
 
+# Noms des niveaux de difficulté affichés sur Discord (surchargeables par "label" dans players.json).
+LEVEL_LABELS = {"STD": "Échauffement", "CNF": "Athlète", "ELT": "Bodybuilder"}
+
+
+def level_label(code: str) -> str:
+    return PLAYER_CATEGORIES.get(code, {}).get("label") or LEVEL_LABELS.get(code, code)
+
+
+# Niveaux du plus facile au plus dur (base de pompes croissante).
+LEVELS = sorted(PLAYER_CATEGORIES, key=lambda code: PLAYER_CATEGORIES[code]["base"])
+
 # KDA moyen de repli par mode, si l'historique du joueur est indisponible.
 DEFAULT_KDA = {
     "ARAM":  {"Kbar": 11.0, "Abar": 25.0, "Dbar": 11.0},

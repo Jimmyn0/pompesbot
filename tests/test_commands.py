@@ -42,7 +42,7 @@ def game():
 
 
 def test_registered_commands_and_permissions(cmds):
-    assert set(cmds) == {"session", "stats", "succes", "lier", "potes", "reset_session", "refresh_kda"}
+    assert set(cmds) == {"session", "stats", "succes", "lier", "difficulte", "potes", "reset_session", "refresh_kda"}
     assert cmds["reset_session"].default_permissions.administrator
     assert cmds["refresh_kda"].default_permissions.administrator
     assert cmds["session"].default_permissions is None

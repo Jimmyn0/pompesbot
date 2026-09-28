@@ -22,6 +22,7 @@ Les joueurs sont répartis en catégories (`ELT`, `CNF`, `STD`) avec des multipl
 - Sessions clôturées automatiquement après 6 h sans partie, avec bilan
 - Récap hebdo le lundi à 10 h : classement, joueur le plus sage, pire partie, pompes en retard
 - Modes suivis : ARAM, ARAM du chaos (Mayhem), URF, Arena
+- Chacun choisit son niveau de difficulté sur Discord (`/difficulte`) : Échauffement, Athlète ou Bodybuilder
 
 ## Prérequis
 
@@ -95,6 +96,7 @@ Renseignez votre Riot ID (`OWNER`) dans `players.json` (non versionné). Vos pot
 | `/session` | Classement des pompes de la session en cours (faites / dues) |
 | `/stats [joueur]` | Statistiques d'un joueur : pompes, KDA, champion favori et maudit, pire partie |
 | `/succes [joueur]` | Succès débloqués et restants |
+| `/difficulte [niveau]` | Voir ou changer son niveau : Échauffement, Athlète ou Bodybuilder |
 | `/lier <joueur>` | Associe ton compte Discord à ton pseudo LoL (nécessaire pour le bouton ✅) |
 | `/potes` | Potes détectés automatiquement |
 | `/reset_session` | Clôt la session (admin, l'historique est conservé) |

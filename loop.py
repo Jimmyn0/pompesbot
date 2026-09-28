@@ -233,6 +233,7 @@ async def post_match(
             fb_victim=is_fb_victim,
             top_damage=is_top_dmg,
             loss_streak=0 if win else streak,
+            puuid=pu,
         )
 
         icons = ""

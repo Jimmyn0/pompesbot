@@ -122,7 +122,7 @@ def breakdown_embed(name: str, champion: str, mode: str, pompes: int, b: dict) -
     k, d, a = b["kda"]
     avg = b["avg"]
     lines = [
-        f"**Catégorie {b['category']}** · {champion} · {mode}",
+        f"**Niveau {b.get('level', b['category'])}** · {champion} · {mode}",
         "",
         f"Ta partie : `{k}/{d}/{a}` · ta moyenne : `{avg['K']:g}/{avg['D']:g}/{avg['A']:g}`",
         f"• Morts : {d} ÷ {avg['D']:g} = ×{b['ratio_mort']:g} de ta moyenne",
@@ -133,7 +133,7 @@ def breakdown_embed(name: str, champion: str, mode: str, pompes: int, b: dict) -
         lines.append(f"`{_signed(value):>6}` {label}" if label != "Base" else f"`{value:>6g}` Base")
     lines.append(f"`{'= ' + format(b['raw'], 'g'):>6}` Sous-total")
     if b["floored"]:
-        lines.append(f"`{b['min']:>6}` Minimum de la catégorie {b['category']} (sous-total plus bas)")
+        lines.append(f"`{b['min']:>6}` Minimum du niveau {b.get('level', b['category'])} (sous-total plus bas)")
     else:
         lines.append(f"`{math.floor(b['raw']):>6}` Arrondi à l'inférieur")
     if b["loss_streak"]:

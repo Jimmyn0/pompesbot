@@ -66,6 +66,14 @@ CREATE TABLE IF NOT EXISTS games (
 CREATE INDEX IF NOT EXISTS games_session ON games(session_id);
 CREATE INDEX IF NOT EXISTS games_puuid   ON games(puuid);
 
+-- Niveau de difficulté choisi par chaque joueur (/difficulte), par PUUID : résiste aux changements de pseudo.
+CREATE TABLE IF NOT EXISTS player_levels (
+    puuid      TEXT PRIMARY KEY,
+    level      TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    updated_at REAL NOT NULL
+);
+
 -- Succès débloqués (une seule fois par joueur).
 CREATE TABLE IF NOT EXISTS achievements (
     puuid       TEXT NOT NULL,
@@ -445,6 +453,17 @@ def count_games_since(since: float) -> int:
     return conn().execute(
         f"SELECT COUNT(DISTINCT match_id) FROM games WHERE ended_at >= ? AND {REAL_GAMES}", (since,)
     ).fetchone()[0]
+
+
+# --- Niveaux de difficulté ---
+
+def get_level(puuid: str) -> str | None:
+    row = conn().execute("SELECT level FROM player_levels WHERE puuid = ?", (puuid,)).fetchone()
+    return row[0] if row else None
+
+
+def set_level(puuid: str, level: str, name: str) -> None:
+    conn().execute("INSERT OR REPLACE INTO player_levels VALUES (?, ?, ?, ?)", (puuid, level, name, time.time()))
 
 
 # --- Méta ---
