@@ -12,7 +12,7 @@ from commands import setup as setup_commands
 from config import CHANNEL_ID, DISCORD_TOKEN, RIOT_API_KEY
 from loop import make_league_loop, make_recap_loop
 from riot_api import client as riot_client
-from views import DoneButton
+from views import DetailButton, DoneButton
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,7 +35,7 @@ class PompesBot(commands.Bot):
         await riot_client.start()
         await champion_icons.setup(self)
         setup_commands(self)
-        self.add_dynamic_items(DoneButton)  # boutons des embeds déjà postés, après redémarrage
+        self.add_dynamic_items(DoneButton, DetailButton)  # boutons des embeds déjà postés, après redémarrage
         await self._sync_commands()
         self.league_loop.start()
         self.recap_loop.start()

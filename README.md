@@ -16,6 +16,9 @@ Les joueurs sont répartis en catégories (`ELT`, `CNF`, `STD`) avec des multipl
 ## Fonctionnalités
 
 - Bouton **✅ J'ai fait mes pompes** sous chaque partie
+- Un bouton par joueur (icône de son champion) : le détail du calcul de ses pompes, visible seulement par celui qui clique
+- Défis : série noire (×1,2 à partir de 3 défaites d'affilée), bonus Intouchable (−5 sans mourir)
+- 9 succès à débloquer (`/succes`) et records de la saison annoncés dans l'embed
 - Sessions clôturées automatiquement après 6 h sans partie, avec bilan
 - Récap hebdo le lundi à 10 h : classement, joueur le plus sage, pire partie, pompes en retard
 - Modes suivis : ARAM, ARAM Mayhem, URF, Arena
@@ -70,6 +73,7 @@ Renseignez votre Riot ID (`OWNER`) dans `players.json` (non versionné). Vos pot
 |---|---|
 | `/session` | Classement des pompes de la session en cours (faites / dues) |
 | `/stats [joueur]` | Statistiques d'un joueur : pompes, KDA, champion favori et maudit, pire partie |
+| `/succes [joueur]` | Succès débloqués et restants |
 | `/lier <joueur>` | Associe ton compte Discord à ton pseudo LoL (nécessaire pour le bouton ✅) |
 | `/potes` | Potes détectés automatiquement |
 | `/reset_session` | Clôt la session (admin, l'historique est conservé) |

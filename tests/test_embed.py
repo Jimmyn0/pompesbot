@@ -37,3 +37,14 @@ def test_mark_player_done():
     assert marked.fields[2].value.splitlines() == ["**15**", "**45** ✅"]
     assert mark_player_done(marked, "B").fields[2].value == marked.fields[2].value   # idempotent
     assert embed.fields[2].value.splitlines() == ["**15**", "**45**"]                # original inchangé
+
+
+def test_achievements_and_records_sections():
+    embed = build_embed([_result("A", 15, d=0, icons="🛡️")], "EUW1_1",
+                        achievements=[("A", "intouchable")], records=["⚔️ **A** — record de kills : 30 kills"])
+    fields = {f.name: f.value for f in embed.fields}
+    assert fields["🏅 Succès débloqués"] == "**A** — 🛡️ Intouchable"
+    assert fields["📈 Records de la saison"].startswith("⚔️ **A**")
+    legend = embed.fields[-1].value
+    assert "🛡️ Sans mort −5" in legend and "Série noire" not in legend
+    assert "Clique sur un joueur" in legend

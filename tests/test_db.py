@@ -130,3 +130,11 @@ def test_json_migration(tmp_path, monkeypatch):
     db.conn().close()
     db._conn = None
     assert [(r["name"], r["total"]) for r in db.session_leaderboard()] == [("Zed", 12)]
+
+
+def test_known_players_only_owner_and_friends():
+    db.set_cached_kda("pA", 450, {"Kbar": 1, "Abar": 1, "Dbar": 1}, "A")    # propriétaire
+    db.record_team("EUW1_1", {"pB": "B", "pR": "Random"})
+    db.record_team("EUW1_2", {"pB": "B"})                                    # B : pote ; Random : vu 1 fois
+    assert set(db.known_players()) == {"A", "B"}
+    assert db.find_player("random") is None
