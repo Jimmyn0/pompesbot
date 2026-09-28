@@ -2,6 +2,7 @@
 Tâche périodique de surveillance des parties.
 """
 
+import asyncio
 import logging
 import time
 from typing import Optional
@@ -10,18 +11,23 @@ import discord
 from discord.ext import tasks
 
 from cache import (
+    _match_order,
     add_session_pompes,
     get_session_total,
+    is_friend,
     is_processed,
+    known_friends,
     mark_processed,
     mark_seeded,
+    record_team,
     seeded_puuids,
 )
 from config import (
     ARENA_GAME_MODE,
     ARENA_LABEL,
     CATCHUP_MAX_AGE,
-    PLAYERS_TO_TRACK,
+    FRIEND_LOOKBACK,
+    OWNER,
     QUEUE_NAMES,
     RECENT_MATCHES_CHECKED,
     SCAN_INTERVAL_SECONDS,
@@ -40,14 +46,7 @@ log = logging.getLogger("PompesBot")
 
 MAX_ATTEMPTS = 5
 _failures: dict[str, int] = {}
-
-
-def _match_order(match_id: str) -> int:
-    """EUW1_7123456789 → 7123456789 (les IDs sont croissants dans le temps)."""
-    try:
-        return int(match_id.rsplit("_", 1)[1])
-    except (IndexError, ValueError):
-        return 0
+_warmup_task: Optional[asyncio.Task] = None
 
 
 def match_mode(info: dict) -> Optional[str]:
@@ -68,16 +67,57 @@ async def _get_channel(bot, channel_id: int) -> Optional[discord.abc.Messageable
     return channel
 
 
-async def _tracked_players() -> dict[str, dict]:
-    tracked: dict[str, dict] = {}
-    for p in PLAYERS_TO_TRACK:
-        puuid = await get_puuid(p["name"], p["tag"])
-        if puuid:
-            tracked[puuid] = p
-    return tracked
+def _team_key(info: dict) -> str:
+    # En Arena, les équipes sont les duos (playerSubteamId), pas 100/200.
+    return "playerSubteamId" if info.get("gameMode") == ARENA_GAME_MODE else "teamId"
 
 
-async def _process_match(channel, match_id: str, tracked: dict[str, dict]) -> bool:
+def _display_name(p: dict) -> str:
+    return p.get("riotIdGameName") or p.get("summonerName") or "?"
+
+
+def _record_owner_team(match_id: str, info: dict, owner_puuid: str) -> None:
+    """Enregistre les coéquipiers du propriétaire sur cette partie (sert à détecter ses potes).
+
+    En Arena, seul le duo compte : on y recroise souvent les mêmes inconnus dans le lobby.
+    Un pote déjà connu reste compté pour les pompes même s'il est dans un autre duo.
+    """
+    participants = info.get("participants", [])
+    key   = _team_key(info)
+    owner = next((p for p in participants if p.get("puuid") == owner_puuid), None)
+    if owner is None:
+        return
+    record_team(match_id, {
+        p["puuid"]: _display_name(p)
+        for p in participants
+        if p.get(key) == owner.get(key) and p.get("puuid") != owner_puuid
+    })
+
+
+async def _bootstrap_friends(owner_puuid: str) -> list[str]:
+    """Premier lancement : lit les dernières parties du propriétaire pour connaître ses potes."""
+    ids = await get_recent_match_ids(owner_puuid, count=FRIEND_LOOKBACK) or []
+    details = await asyncio.gather(*(get_match_detail(mid) for mid in ids))
+    for mid, detail in zip(ids, details):
+        if detail:
+            _record_owner_team(mid, detail.get("info", {}), owner_puuid)
+    friends = known_friends()
+    log.info(f"{len(friends)} pote(s) détecté(s) : {', '.join(n for n, _ in friends.values()) or '—'}")
+    return ids
+
+
+async def warm_kda_cache(owner_puuid: str) -> None:
+    """Précalcule le KDA ARAM du propriétaire et de ses potes, pour ne pas retarder les embeds."""
+    players = {owner_puuid: OWNER["name"], **{p: n for p, (n, _) in known_friends().items()}}
+    for puuid, name in players.items():
+        try:
+            await get_player_kda_stats(name, puuid, 450)
+        except Exception:
+            log.exception(f"Préchauffage KDA échoué pour {name}")
+    log.info("Cache KDA prêt")
+
+
+async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
     """Traite une partie. Retourne False si elle doit être réessayée plus tard."""
     match_detail = await get_match_detail(match_id)
     if not match_detail:
@@ -86,6 +126,7 @@ async def _process_match(channel, match_id: str, tracked: dict[str, dict]) -> bo
     info  = match_detail.get("info", {})
     queue = info.get("queueId")
     mode  = match_mode(info)
+    _record_owner_team(match_id, info, owner_puuid)
     if mode is None:
         log.info(f"Match {match_id} ignoré (queue {queue} hors scope)")
         return True
@@ -98,8 +139,7 @@ async def _process_match(channel, match_id: str, tracked: dict[str, dict]) -> bo
     fb_killer_pid, fb_victim_pid = await get_first_blood(match_id)
     participants = info.get("participants", [])
 
-    # En Arena, les équipes sont les duos (playerSubteamId), pas 100/200.
-    team_key = "playerSubteamId" if mode == ARENA_LABEL else "teamId"
+    team_key = _team_key(info)
     top_by_team: dict = {}
     for p in participants:
         team = p.get(team_key)
@@ -111,10 +151,10 @@ async def _process_match(channel, match_id: str, tracked: dict[str, dict]) -> bo
     results = []
     for p in participants:
         pu = p.get("puuid")
-        if pu not in tracked:
+        if pu != owner_puuid and not is_friend(pu):
             continue
 
-        p_name = tracked[pu]["name"]
+        p_name = _display_name(p)
         k      = p.get("kills",   0)
         d      = p.get("deaths",  0)
         a      = p.get("assists", 0)
@@ -171,23 +211,24 @@ async def scan(bot, channel_id: int) -> None:
         return
 
     log.debug("Scan des parties…")
-    tracked = await _tracked_players()
+    owner_puuid = await get_puuid(OWNER["name"], OWNER["tag"])
+    if not owner_puuid:
+        return
 
-    new_ids: set[str] = set()
-    for puuid in tracked:
-        ids = await get_recent_match_ids(puuid, count=RECENT_MATCHES_CHECKED)
-        if ids is None:
-            continue
-        if puuid not in seeded_puuids:
-            # Premier passage pour ce joueur : on mémorise son historique sans le poster.
-            mark_seeded(puuid, ids)
-            continue
-        new_ids.update(mid for mid in ids if not is_processed(mid))
+    global _warmup_task
+    if owner_puuid not in seeded_puuids:
+        # Premier lancement : on apprend les potes et on mémorise l'historique sans le poster.
+        mark_seeded(owner_puuid, await _bootstrap_friends(owner_puuid))
+    if _warmup_task is None:
+        _warmup_task = asyncio.create_task(warm_kda_cache(owner_puuid))
+
+    ids = await get_recent_match_ids(owner_puuid, count=RECENT_MATCHES_CHECKED)
+    new_ids = [mid for mid in ids or [] if not is_processed(mid)]
 
     for match_id in sorted(new_ids, key=_match_order):
         log.info(f"Nouveau match {match_id}")
         try:
-            done = await _process_match(channel, match_id, tracked)
+            done = await _process_match(channel, match_id, owner_puuid)
         except Exception:
             log.exception(f"Erreur pendant le traitement de {match_id}")
             done = False

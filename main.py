@@ -2,17 +2,15 @@
 PompesBot v2.0 — point d'entrée.
 """
 
-import asyncio
 import logging
 
 import discord
 from discord.ext import commands
 
 from commands import setup as setup_commands
-from config import CHANNEL_ID, DISCORD_TOKEN, PLAYERS_TO_TRACK, RIOT_API_KEY
+from config import CHANNEL_ID, DISCORD_TOKEN, RIOT_API_KEY
 from loop import make_league_loop
 from riot_api import client as riot_client
-from riot_api import get_player_kda_stats, get_puuid
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,18 +18,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("PompesBot")
-
-
-async def warm_kda_cache() -> None:
-    """Précalcule le KDA ARAM de chaque joueur en arrière-plan, pour ne pas retarder le premier embed."""
-    for p in PLAYERS_TO_TRACK:
-        try:
-            puuid = await get_puuid(p["name"], p["tag"])
-            if puuid:
-                await get_player_kda_stats(p["name"], puuid, 450)
-        except Exception:
-            log.exception(f"Préchauffage KDA échoué pour {p['name']}")
-    log.info("Cache KDA prêt")
 
 
 class PompesBot(commands.Bot):
@@ -47,7 +33,6 @@ class PompesBot(commands.Bot):
         await riot_client.start()
         setup_commands(self)
         self.league_loop.start()
-        self._warmup = asyncio.create_task(warm_kda_cache())
 
     async def on_ready(self) -> None:
         log.info(f"Bot connecté : {self.user}")

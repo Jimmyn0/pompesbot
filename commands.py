@@ -1,11 +1,12 @@
 """
-Commandes Discord : !session, !reset_session, !refresh_kda
+Commandes Discord : !session, !potes, !reset_session, !refresh_kda
 """
 
 import discord
 from discord.ext import commands
 
-from cache import invalidate_kda, reset_session, session_totals
+from cache import invalidate_kda, known_friends, reset_session, session_totals
+from config import FRIEND_LOOKBACK, FRIEND_MIN_GAMES
 
 
 def setup(bot: commands.Bot) -> None:
@@ -24,6 +25,21 @@ def setup(bot: commands.Bot) -> None:
         )
         embed = discord.Embed(
             title="📊 Classement de session", description=lines, color=0xF1C40F
+        )
+        await ctx.send(embed=embed)
+
+    @bot.command(name="potes")
+    async def cmd_potes(ctx: commands.Context) -> None:
+        """Liste les potes détectés automatiquement."""
+        friends = sorted(known_friends().values(), key=lambda f: f[1], reverse=True)
+        lines = "\n".join(f"**{name}** — {n} partie(s) ensemble" for name, n in friends)
+        embed = discord.Embed(
+            title="👥 Potes suivis",
+            description=lines or "Aucun pour l'instant.",
+            color=0x3498DB,
+        )
+        embed.set_footer(
+            text=f"Coéquipiers vus au moins {FRIEND_MIN_GAMES} fois sur tes {FRIEND_LOOKBACK} dernières parties"
         )
         await ctx.send(embed=embed)
 

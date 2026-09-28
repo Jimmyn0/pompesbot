@@ -170,14 +170,14 @@ async def fetch_kda(puuid: str, queue: int, count: int = KDA_SAMPLE_SIZE) -> Opt
 
 
 async def get_player_kda_stats(player_name: str, puuid: str, queue: int, mode: str = "ARAM") -> dict:
-    cached = get_cached_kda(player_name, queue)
+    cached = get_cached_kda(puuid, queue)
     if cached:
         return cached
 
     log.info(f"Calcul KDA moyen pour {player_name} (queue {queue}, {KDA_SAMPLE_SIZE} parties)…")
     stats = await fetch_kda(puuid, queue)
     if stats:
-        set_cached_kda(player_name, queue, stats)
+        set_cached_kda(puuid, queue, stats, player_name)
         log.info(f"KDA {player_name}: K={stats['Kbar']} A={stats['Abar']} D={stats['Dbar']}")
         return stats
 

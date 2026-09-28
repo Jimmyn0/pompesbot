@@ -1,7 +1,7 @@
 """
 Configuration centrale — constantes, variables d'environnement, liste de joueurs.
-Les joueurs et catégories sont chargés depuis players.json (non versionné).
-Copiez players.example.json → players.json et remplissez vos pseudos.
+Le propriétaire et les catégories sont chargés depuis players.json (non versionné).
+Copiez players.example.json → players.json et remplissez votre Riot ID.
 """
 
 import json
@@ -43,8 +43,11 @@ SESSION_FILE  = os.path.join(BASE_DIR, "session_totals.json")
 STATE_FILE    = os.path.join(BASE_DIR, "match_state.json")
 PLAYERS_FILE  = os.path.join(BASE_DIR, "players.json")
 
+FRIEND_LOOKBACK  = 40   # parties récentes du propriétaire prises en compte
+FRIEND_MIN_GAMES = 2    # un coéquipier vu au moins N fois dans cette fenêtre est un pote
+
 KDA_CACHE_TTL   = 6 * 3600
-KDA_SAMPLE_SIZE = 50
+KDA_SAMPLE_SIZE = 20   # 21 requêtes par joueur et par mode (limite clé : 100 req / 2 min)
 
 if not os.path.exists(PLAYERS_FILE):
     print("[ERREUR] players.json introuvable. Copiez players.example.json → players.json.")
@@ -53,8 +56,10 @@ if not os.path.exists(PLAYERS_FILE):
 with open(PLAYERS_FILE, "r", encoding="utf-8") as _f:
     _players_data = json.load(_f)
 
-PLAYERS_TO_TRACK: list[dict]  = _players_data["PLAYERS_TO_TRACK"]
-PLAYER_CATEGORIES: dict       = _players_data["PLAYER_CATEGORIES"]
+# Seul le compte du propriétaire (celui qui lance le bot) est suivi ; ses potes sont
+# détectés automatiquement parmi ses coéquipiers (cf. FRIEND_MIN_GAMES).
+OWNER: dict             = _players_data["OWNER"]
+PLAYER_CATEGORIES: dict = _players_data["PLAYER_CATEGORIES"]
 DEFAULT_CATEGORY              = "STD"
 
 if DEFAULT_CATEGORY not in PLAYER_CATEGORIES:

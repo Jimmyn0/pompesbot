@@ -7,3 +7,4 @@ session_totals.json
 players.json
 match_state.json
 *.tmp
+*.bak

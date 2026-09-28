@@ -21,7 +21,7 @@ DISCORD_CHANNEL_ID=...
 Fichier joueurs (non versionné) :
 ```bash
 cp players.example.json players.json
-# puis éditez players.json avec vos pseudos et tags Riot
+# puis renseignez OWNER (votre Riot ID : name + tag)
 ```
 
 ## Architecture
@@ -36,9 +36,9 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 | `config.py` | Constantes, liste de joueurs, catégories avec leurs multiplicateurs |
 | `riot_api.py` | Client Riot async (aiohttp) avec rate limiter et retries : PUUID, historique de matchs, KDA moyen par queue, timeline (first blood) |
 | `cache.py` | Persistance JSON atomique : cache KDA par joueur et par queue, TTL 6h (`stats_cache.json`), totaux de session (`session_totals.json`), parties déjà traitées (`match_state.json`) |
-| `pushups.py` | Formule de calcul des pompes basée sur le ratio KDA réel / KDA moyen des 50 dernières parties |
+| `pushups.py` | Formule de calcul des pompes basée sur le ratio KDA réel / KDA moyen des 20 dernières parties |
 | `embed_builder.py` | Construction de l'embed Discord post-partie (scoreboard style) |
-| `commands.py` | Commandes Discord : `!session`, `!reset_session` (admin), `!refresh_kda` (admin) |
+| `commands.py` | Commandes Discord : `!session`, `!potes`, `!reset_session` (admin), `!refresh_kda` (admin) |
 
 ## Catégories de joueurs
 
@@ -47,14 +47,18 @@ Trois catégories dans `players.json` avec des multiplicateurs différents pour 
 - `CNF` — base 23 pompes
 - `STD` (tous les autres) — base 15 pompes
 
-Pour ajouter un joueur : l'ajouter dans `PLAYERS_TO_TRACK` (nom + tag Riot) et optionnellement dans une catégorie de `PLAYER_CATEGORIES` dans `players.json`.
+Les catégories référencent les joueurs par pseudo (`riotIdGameName`, sans le tag).
+
+## Joueurs suivis
+
+Seul le compte `OWNER` de `players.json` est interrogé. Ses potes sont détectés automatiquement : tout coéquipier vu au moins `FRIEND_MIN_GAMES` (2) fois sur ses `FRIEND_LOOKBACK` (40) dernières parties. En Arena, seul le duo du propriétaire compte pour la détection (on y recroise souvent des inconnus dans le lobby), mais un pote déjà connu est compté pour les pompes même s'il est dans un autre duo. Les équipes récentes sont stockées dans `match_state.json` (`recent_teams`). Les parties jouées par les potes sans le propriétaire ne sont pas suivies.
 
 ## Formule des pompes
 
 ```
 total = BASE + (ratio_mort - 1) × MULT_MORT - (ratio_off - 1) × MULT_KILL
 ```
-- `ratio_mort = deaths / Dbar` (Dbar = moyenne des morts sur les 50 dernières parties du même mode)
+- `ratio_mort = deaths / Dbar` (Dbar = moyenne des morts sur les 20 dernières parties du même mode)
 - `ratio_off = (kills + 0.5×assists) / max(Kbar + 0.5×Abar, 1)`
 - Défaite : +3 pompes
 - First blood victim : +1 / First blood kill : -1 / Top damage : -1
