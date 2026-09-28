@@ -62,10 +62,10 @@ python main.py
 1. Ajoutez l'ID du salon de test dans `.env` : `DEV_CHANNEL_ID=...`
 2. Lancez :
    ```powershell
-   .	est-bot.ps1          # réutilise la copie data	est si elle existe
-   .	est-bot.ps1 -Reset   # repart d'une copie fraîche des vraies données
+   .\test-bot.ps1          # réutilise la copie data\test si elle existe
+   .\test-bot.ps1 -Reset   # repart d'une copie fraîche des vraies données
    ```
-   Si PowerShell bloque le script : `powershell -ExecutionPolicy Bypass -File .	est-bot.ps1`
+   Si PowerShell bloque le script : `powershell -ExecutionPolicy Bypass -File .\test-bot.ps1`
 3. Dans Discord : `/test_partie mode:Arena resultat:Défaite sans_mort:True`. La partie générée (vous et vos potes) passe par le même traitement qu'une vraie : embed, boutons, séries, succès, records.
 
 Les fausses parties ne touchent jamais les vraies données : `/test_partie` n'existe que si `POMPESBOT_DEV=1` **et** que les données sont ailleurs que dans le dossier du bot.
