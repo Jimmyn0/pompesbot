@@ -7,6 +7,7 @@ import logging
 import discord
 from discord.ext import commands
 
+import champion_icons
 from commands import setup as setup_commands
 from config import CHANNEL_ID, DISCORD_TOKEN, RIOT_API_KEY
 from loop import make_league_loop
@@ -31,6 +32,7 @@ class PompesBot(commands.Bot):
     async def setup_hook(self) -> None:
         # Appelé une seule fois (contrairement à on_ready, rappelé à chaque reconnexion).
         await riot_client.start()
+        await champion_icons.setup(self)
         setup_commands(self)
         self.league_loop.start()
 

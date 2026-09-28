@@ -37,7 +37,8 @@ Le bot est découpé en modules spécialisés — `main.py` est le seul point d'
 | `riot_api.py` | Client Riot async (aiohttp) avec rate limiter et retries : PUUID, historique de matchs, KDA moyen par queue, timeline (first blood) |
 | `cache.py` | Persistance JSON atomique : cache KDA par joueur et par queue, TTL 6h (`stats_cache.json`), totaux de session (`session_totals.json`), parties déjà traitées (`match_state.json`) |
 | `pushups.py` | Formule de calcul des pompes basée sur le ratio KDA réel / KDA moyen des 20 dernières parties |
-| `embed_builder.py` | Construction de l'embed Discord post-partie (scoreboard style) |
+| `embed_builder.py` | Construction de l'embed Discord post-partie : 3 champs inline (Joueur / KDA · Dmg / Pompes), alignés par Discord |
+| `champion_icons.py` | Icônes de champion : téléchargées depuis Data Dragon et enregistrées comme emojis d'application à la première apparition (repli : nom du champion) |
 | `commands.py` | Commandes Discord : `!session`, `!potes`, `!reset_session` (admin), `!refresh_kda` (admin) |
 
 ## Catégories de joueurs

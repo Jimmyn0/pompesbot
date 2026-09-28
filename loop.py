@@ -32,6 +32,7 @@ from config import (
     RECENT_MATCHES_CHECKED,
     SCAN_INTERVAL_SECONDS,
 )
+from champion_icons import champion_icon
 from embed_builder import SPECIAL_ICONS, build_embed
 from pushups import calculate_pushups
 from riot_api import (
@@ -180,7 +181,7 @@ async def _process_match(channel, match_id: str, owner_puuid: str) -> bool:
 
         results.append({
             "name":          p_name,
-            "champ":         p.get("championName", "—"),
+            "champ":         await champion_icon(p.get("championId", 0), p.get("championName", "—")),
             "kills":         k,
             "deaths":        d,
             "assists":       a,
