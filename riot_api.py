@@ -89,8 +89,12 @@ class RiotClient:
                         return await resp.json()
                     if resp.status == 404:
                         return None
-                    if resp.status in (401, 403):
-                        log.error(f"Riot API {resp.status} : clé invalide ou expirée ({path})")
+                    if resp.status == 401:
+                        log.error(f"Riot API 401 : clé absente ou invalide ({path})")
+                        return None
+                    if resp.status == 403:
+                        # Clé expirée, ou donnée que Riot n'expose pas (ex. parties d'ARAM Mayhem).
+                        log.warning(f"Riot API 403 : accès refusé ({path})")
                         return None
                     if resp.status == 429:
                         delay = float(resp.headers.get("Retry-After", 5))

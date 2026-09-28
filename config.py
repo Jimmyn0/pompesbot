@@ -30,6 +30,14 @@ QUEUE_NAMES = {
 # L'Arena change de queueId selon les saisons (1700, 1710, 1740, 1750…) :
 # on la reconnaît par son gameMode plutôt que par sa queue.
 ARENA_GAME_MODE = "CHERRY"
+
+# Queues que l'API Riot n'expose pas : lues depuis le client League du PC (cf. lcu.py).
+LCU_QUEUES = {2400}   # ARAM Mayhem / ARAM du chaos
+# Emplacement du lockfile du client ; LCU_LOCKFILE dans le .env pour un autre dossier.
+LCU_LOCKFILES = (
+    [os.environ["LCU_LOCKFILE"]] if os.getenv("LCU_LOCKFILE")
+    else [f"{drive}:\\Riot Games\\League of Legends\\lockfile" for drive in "CDEF"]
+)
 ARENA_LABEL     = "Arena"
 
 # Limites de la clé Riot (dev et personal key) : 20 req/1s et 100 req/2min.

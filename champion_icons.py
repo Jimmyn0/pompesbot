@@ -48,6 +48,20 @@ async def _load_ddragon(session: aiohttp.ClientSession) -> None:
     _ddragon_ids.update({int(c["key"]): c["id"] for c in data.values()})
 
 
+async def champion_name(champion_id: int) -> str:
+    """Nom (id Data Dragon, ex. « MonkeyKing ») d'un champion à partir de son numéro.
+
+    Le client League ne donne que le numéro ; les matchs Riot donnent aussi le nom.
+    """
+    if champion_id not in _ddragon_ids:
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                await _load_ddragon(session)
+        except Exception as e:
+            log.warning(f"Data Dragon indisponible : {e!r}")
+    return _ddragon_ids.get(champion_id, f"Champion {champion_id}")
+
+
 async def champion_icon(champion_id: int, champion_name: str) -> str:
     """Emoji du champion (ex. <:Karma:123…>), ou son nom si l'icône est indisponible."""
     if _bot is None:

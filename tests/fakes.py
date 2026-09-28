@@ -32,6 +32,7 @@ class FakeRiot:
         self.first_blood = (1, 2)
         self.kda = {"Kbar": 5, "Abar": 10, "Dbar": 5}
         self.kda_calls: list[str] = []
+        self.kda_queries: list[tuple[str, int]] = []   # (pseudo, queue)
 
     def add(self, match_id, m):
         self.history.append(match_id)
@@ -50,7 +51,13 @@ class FakeRiot:
         return self.first_blood
 
     async def get_player_kda_stats(self, name, puuid, queue, mode="ARAM"):
+        # Comme riot_api.get_player_kda_stats : le cache d'abord, Riot seulement s'il est vide.
+        import db
+        cached = db.get_cached_kda(puuid, queue)
+        if cached:
+            return cached
         self.kda_calls.append(name)
+        self.kda_queries.append((name, queue))
         return dict(self.kda)
 
 
@@ -125,3 +132,51 @@ class FakeInteraction:
     def reply(self):
         """(content, embed, ephemeral) de la première réponse."""
         return self.response.messages[0]
+
+
+def lcu_game(game_id, players, created_ms, queue=2400, game_mode="KIWI", duration_s=1200):
+    """Partie au format de l'historique du client League.
+
+    `players` : [(puuid, pseudo, équipe, kills, morts, assists, dégâts, victoire)]. Le puuid n'est
+    qu'indicatif : comme en vrai, le bot retrouve le PUUID API via le Riot ID (fausse API : « p » + pseudo).
+    """
+    participants, identities = [], []
+    for pid, (_api_puuid, name, team, k, d, a, dmg, win) in enumerate(players, start=1):
+        participants.append({
+            "participantId": pid, "teamId": team, "championId": 100 + pid,
+            "stats": {"kills": k, "deaths": d, "assists": a, "totalDamageDealtToChampions": dmg,
+                      "win": win, "pentaKills": 0, "playerSubteamId": 0},
+        })
+        # Le client a ses propres PUUID (bruts) ; le bot retrouve ceux de l'API via le Riot ID.
+        identities.append({"participantId": pid,
+                           "player": {"puuid": f"brut-{name}", "gameName": name, "tagLine": "EUW"}})
+    return {"gameId": game_id, "platformId": "EUW1", "queueId": queue, "gameMode": game_mode,
+            "gameCreation": created_ms, "gameDuration": duration_s,
+            "participants": participants, "participantIdentities": identities}
+
+
+class FakeClientLoL:
+    """Faux client League : compte connecté et historique local modifiables par les tests."""
+
+    def __init__(self, riot_id=("A", "EUW")):
+        self.riot_id = riot_id
+        self.games: list[dict] = []          # détails complets, du plus ancien au plus récent
+        self.first_blood_result = (1, 6)
+
+    def add(self, game):
+        self.games.append(game)
+
+    async def current_riot_id(self):
+        return self.riot_id
+
+    async def recent_games(self):
+        return list(reversed(self.games))[:20]
+
+    async def game_detail(self, game_id):
+        return next((g for g in self.games if g["gameId"] == game_id), None)
+
+    async def first_blood(self, game_id):
+        return self.first_blood_result
+
+    async def champion_name(self, champion_id):
+        return f"Champ{champion_id}"

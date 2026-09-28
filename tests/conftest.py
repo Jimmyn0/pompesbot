@@ -25,13 +25,16 @@ with open(os.path.join(_DATA_DIR, "players.json"), "w", encoding="utf-8") as f:
     }, f)
 os.environ["POMPESBOT_DATA_DIR"] = _DATA_DIR
 os.environ.setdefault("RIOT_API_KEY", "test")
+# Jamais le vrai client League du PC pendant les tests (cf. fixture client_lol).
+os.environ["LCU_LOCKFILE"] = os.path.join(_DATA_DIR, "pas-de-lockfile")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fakes import FakeRiot  # noqa: E402
+from fakes import FakeClientLoL, FakeRiot  # noqa: E402
 
 import db  # noqa: E402
+import lcu  # noqa: E402
 import loop  # noqa: E402
 
 
@@ -51,6 +54,15 @@ def riot(monkeypatch):
     fake = FakeRiot()
     for name in ("get_puuid", "get_recent_match_ids", "get_match_detail", "get_first_blood", "get_player_kda_stats"):
         monkeypatch.setattr(loop, name, getattr(fake, name))
+    return fake
+
+
+@pytest.fixture
+def client_lol(monkeypatch):
+    """Faux client League (historique local) branché sur lcu."""
+    fake = FakeClientLoL()
+    for name in ("current_riot_id", "recent_games", "game_detail", "first_blood", "champion_name"):
+        monkeypatch.setattr(lcu, name, getattr(fake, name))
     return fake
 
 

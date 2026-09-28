@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import discord
 from discord.ext import tasks
 
+import lcu
 from achievements import new_game_achievements, season_records
 from champion_icons import champion_icon
 from config import (
@@ -18,6 +19,7 @@ from config import (
     ARENA_LABEL,
     CATCHUP_MAX_AGE,
     FRIEND_LOOKBACK,
+    LCU_QUEUES,
     OWNER,
     QUEUE_NAMES,
     RECAP_HOUR,
@@ -30,6 +32,7 @@ from config import (
 from db import (
     _match_order,
     current_streak,
+    get_cached_kda,
     get_meta,
     get_session_total,
     is_friend,
@@ -41,6 +44,7 @@ from db import (
     record_game,
     record_team,
     rollover_if_idle,
+    set_cached_kda,
     set_meta,
     unlock,
 )
@@ -308,17 +312,108 @@ async def scan(bot, channel_id: int) -> None:
         except Exception:
             log.exception(f"Erreur pendant le traitement de {match_id}")
             done = False
+        _after_attempt(match_id, done)
 
-        if done:
-            _failures.pop(match_id, None)
-            mark_processed(match_id)
+    # Parties que Riot n'expose pas (ARAM Mayhem) : lues depuis le client League du PC, s'il est ouvert.
+    try:
+        await _scan_client_games(channel, owner_puuid)
+    except Exception:
+        log.exception("Erreur pendant la lecture du client League")
+
+
+def _after_attempt(match_id: str, done: bool) -> None:
+    """Marque la partie traitée, ou compte l'échec (abandon après MAX_ATTEMPTS essais)."""
+    if done:
+        _failures.pop(match_id, None)
+        mark_processed(match_id)
+        return
+    _failures[match_id] = _failures.get(match_id, 0) + 1
+    if _failures[match_id] >= MAX_ATTEMPTS:
+        log.error(f"Abandon du match {match_id} après {MAX_ATTEMPTS} essais")
+        _failures.pop(match_id)
+        mark_processed(match_id)
+
+
+async def _client_match_info(detail: dict) -> dict:
+    """Partie du client au format match-v5, avec les PUUID de l'API Riot.
+
+    Le client utilise des PUUID bruts ; l'API Riot (et donc la base du bot) des PUUID chiffrés
+    propres à la clé API. On retrouve ces derniers à partir du Riot ID de chaque joueur.
+    """
+    info = await lcu.to_match_info(detail)
+    for p in info["participants"]:
+        api_puuid = None
+        if p["riotIdGameName"] and p["riotIdTagline"]:
+            api_puuid = await get_puuid(p["riotIdGameName"], p["riotIdTagline"])
+        p["puuid"] = api_puuid or f"lcu:{p['lcuPuuid']}"
+    return info
+
+
+def _is_owner(riot_id: tuple[str, str] | None) -> bool:
+    return riot_id is not None and (riot_id[0].casefold(), riot_id[1].casefold()) == (
+        OWNER["name"].casefold(), OWNER["tag"].casefold())
+
+
+async def _process_client_game(channel, game_id: int, owner_puuid: str) -> bool:
+    """Traite une partie lue dans le client League. False : à réessayer plus tard."""
+    detail = await lcu.game_detail(game_id)
+    if not detail:
+        return False
+    match_id = lcu.match_id(detail)
+    info = await _client_match_info(detail)
+    _record_owner_team(match_id, info, owner_puuid)
+    mode = match_mode(info)
+    if mode is None:
+        return True
+
+    ended_at = info["gameEndTimestamp"] / 1000
+    if time.time() - ended_at > CATCHUP_MAX_AGE:
+        log.info(f"Match {match_id} ignoré (trop ancien)")
+        return True
+    await _close_idle_session(channel, ended_at)
+
+    # KDA de référence : l'API Riot n'a pas l'historique de ce mode, le client si.
+    queue = info["queueId"]
+    for p in info["participants"]:
+        puuid = p["puuid"]
+        if (puuid == owner_puuid or is_friend(puuid)) and get_cached_kda(puuid, queue) is None:
+            baseline = await lcu.kda_baseline(p["lcuPuuid"], queue)
+            if baseline:
+                set_cached_kda(puuid, queue, baseline, p["riotIdGameName"])
+
+    first_blood = await lcu.first_blood(game_id)
+    return await post_match(channel, match_id, info, mode, ended_at, owner_puuid, first_blood)
+
+
+async def _scan_client_games(channel, owner_puuid: str) -> None:
+    if not _is_owner(await lcu.current_riot_id()):
+        return   # client fermé, ou connecté à un autre compte
+    games = [g for g in await lcu.recent_games() if g.get("queueId") in LCU_QUEUES]
+
+    if get_meta("lcu_seeded") is None:
+        # Première lecture du client : on apprend les potes sur son historique, sans rien poster.
+        for game in games:
+            detail = await lcu.game_detail(game["gameId"])
+            if detail:
+                _record_owner_team(lcu.match_id(detail), await _client_match_info(detail), owner_puuid)
+        mark_processed(*(lcu.match_id(g) for g in games))
+        set_meta("lcu_seeded", "1")
+        friends = known_friends()
+        log.info(f"Client League : {len(games)} partie(s) d'historique lues, "
+                 f"{len(friends)} pote(s) : {', '.join(n for n, _ in friends.values()) or '—'}")
+        return
+
+    for game in sorted(games, key=lambda g: g["gameCreation"]):
+        match_id = lcu.match_id(game)
+        if is_processed(match_id):
             continue
-
-        _failures[match_id] = _failures.get(match_id, 0) + 1
-        if _failures[match_id] >= MAX_ATTEMPTS:
-            log.error(f"Abandon du match {match_id} après {MAX_ATTEMPTS} essais")
-            _failures.pop(match_id)
-            mark_processed(match_id)
+        log.info(f"Nouvelle partie (client League) {match_id}")
+        try:
+            done = await _process_client_game(channel, game["gameId"], owner_puuid)
+        except Exception:
+            log.exception(f"Erreur pendant le traitement de {match_id}")
+            done = False
+        _after_attempt(match_id, done)
 
 
 def make_league_loop(bot, channel_id: int):
